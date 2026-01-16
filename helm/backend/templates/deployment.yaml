@@ -1,0 +1,15 @@
+spec:
+  containers:
+  - name: backend
+    image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+    env:
+    # ✅ 12-FACTOR: Inyecta DATABASE_URL desde Secret K8s
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: db-credentials  # ← Creado por External Secret
+          key: DATABASE_URL
+    
+    # Redis similar
+    - name: REDIS_URL
+      value: "redis://{{ .Values.redis.host }}:6379"
