@@ -333,3 +333,4 @@ jobs:
           echo "🧹 Cleaning up..."
           kind delete cluster --name gpuchile-ci || true
           echo "✅ Cleanup complete"
+#F
