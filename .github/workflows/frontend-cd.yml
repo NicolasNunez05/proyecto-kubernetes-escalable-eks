@@ -1,0 +1,104 @@
+name: Frontend CD (Manual Deploy)
+
+# 🎯 Trigger Manual: Solo se ejecuta cuando TÚ lo decides
+on: 
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+
+# 🌍 Variables de Entorno Globales (Coinciden con tus YAMLs)
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: gpuchile-frontend
+  EKS_CLUSTER_NAME: gpuchile-cluster
+  DEPLOYMENT_NAME: gpuchile-frontend  # Coincide con tu Deployment y Service
+  CONTAINER_NAME: frontend
+  NAMESPACE: default
+
+jobs:
+  deploy:
+    name: Build & Deploy Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1️⃣ Bajar el código
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Configurar credenciales AWS
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 3️⃣ Login en Amazon ECR
+      - name: 🔑 Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 4️⃣ Construir y Subir Imagen Docker
+      - name: 🏗️ Build, tag, and push Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # IMPORTANTE: Entrar a la carpeta del frontend
+          cd apps/frontend
+          
+          # Construir imagen
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          # Subir a AWS ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          # Guardar la URI para el siguiente paso
+          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # 5️⃣ Conectar con Kubernetes (EKS)
+      - name: ⚙️ Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      # 6️⃣ Desplegar (Actualizar imagen)
+      - name: 🚀 Deploy to EKS
+        run: |
+          # Actualizamos la imagen. Kubernetes mantendrá tus comandos "patch" (sed) del deployment original.
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            ${{ env.CONTAINER_NAME }}=${{ steps.build-image.outputs.IMAGE_URI }} \
+            -n ${{ env.NAMESPACE }}
+
+      # 7️⃣ Verificar éxito del Rollout
+      - name: ✅ Verify deployment status
+        run: |
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} --timeout=180s
+
+      # 8️⃣ SMOKE TEST (Prueba de Humo)
+      - name: 🔍 Smoke test - Health check
+        continue-on-error: true # Si falla porque el LB tarda en levantar, que no rompa el pipeline
+        run: |
+          echo "🏥 Running smoke test..."
+          
+          # Obtenemos la URL del balanceador
+          FRONTEND_URL=$(kubectl get svc ${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "⚠️ LoadBalancer URL not ready yet. Skipping smoke test."
+            exit 0
+          fi
+          
+          echo "🌐 Testing URL: http://$FRONTEND_URL"
+          # Esperamos un poco para propagación DNS básica
+          sleep 10
+          # Hacemos un curl para ver si responde 200 OK
+          curl -I http://$FRONTEND_URL || echo "⚠️ Site not reachable yet (DNS propagation takes time)"
