@@ -13,12 +13,24 @@ env:
   EKS_CLUSTER_NAME: gpuchile-cluster
 
 jobs:
-  # 🕵️ JOB 1: CALIDAD DE CÓDIGO (Linting & Testing)
+  # 🕵️ JOB 1: CALIDAD DE CÓDIGO (Linting, Testing & Security)
   code-quality:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # 🛡️ NUEVO: Escaneo de Seguridad con Trivy (Filesystem)
+      # Esto revisa tu código y requirements.txt ANTES de instalar nada
+      - name: 🛡️ Run Trivy vulnerability scanner (Filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -49,9 +61,7 @@ jobs:
       - name: 🎨 Check Code Formatting (Black)
         run: |
           cd apps/backend
-          # Instalar Black si no está (aunque ya debería estar por requirements-test.txt)
           pip install black
-          # El flag --check solo revisa, no cambia nada. Si está mal formateado, falla.
           black . --check --diff
 
       - name: 🧪 Running Tests with Coverage
@@ -73,7 +83,7 @@ jobs:
           bandit -r app/ -f json -o bandit-report.json || true
           bandit -r app/ -ll
 
-  # 🚀 JOB 2: CONSTRUCCIÓN, SEGURIDAD Y DESPLIEGUE
+  # 🚀 JOB 2: CONSTRUCCIÓN, SEGURIDAD AVANZADA Y DESPLIEGUE
   build-secure-deploy:
     needs: code-quality
     runs-on: ubuntu-latest
@@ -104,13 +114,14 @@ jobs:
           cd apps/backend
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.VERSION_TAG }} .
 
-      - name: 🦠 Security Scan with Trivy
+      # 🛡️ TRIVY (Imagen): Escanea el sistema operativo del contenedor (Debian/Alpine)
+      - name: 🦠 Security Scan with Trivy (Image)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.VERSION_TAG }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '0'
+          exit-code: '0' # No rompemos aquí para poder subir el reporte, pero podrías poner '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
