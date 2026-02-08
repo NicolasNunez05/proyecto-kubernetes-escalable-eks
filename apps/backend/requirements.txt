@@ -1,15 +1,25 @@
-# Testing Framework
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-pytest-mock==3.12.0
-httpx==0.25.2
-
-# Linting & Code Quality
-flake8==6.1.0
-black==23.12.1
-isort==5.13.2
-
-# Security
-bandit==1.7.5
-safety==2.3.5
+fastapi==0.109.2
+uvicorn==0.27.1
+sqlalchemy==2.0.27
+alembic==1.13.1
+psycopg2-binary==2.9.9
+pydantic==2.6.1
+pydantic-settings==2.1.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+boto3==1.34.42
+requests==2.31.0
+redis==5.0.1
+prometheus-client==0.19.0
+# --- Testing & Security ---
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+httpx>=0.25.2
+flake8>=6.1.0
+black>=23.12.1
+isort>=5.13.2
+bandit>=1.7.5
+safety>=3.0.0  # <--- AQUÍ ESTABA EL PROBLEMA (Actualizado a 3.x)
