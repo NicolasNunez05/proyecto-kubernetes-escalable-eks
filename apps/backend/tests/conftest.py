@@ -2,6 +2,7 @@ import os
 import sys
 import pytest
 import asyncio
+import httpx
 from unittest.mock import MagicMock, patch, AsyncMock
 
 # --- 1. CONFIGURACIÓN DE ENTORNO ---
@@ -16,7 +17,6 @@ os.environ["TESTING"] = "true"
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -26,28 +26,19 @@ from sqlalchemy.pool import StaticPool
 @pytest.fixture(scope="session", autouse=True)
 def mock_redis_global():
     """
-    Simula Redis cubriendo todos los casos de conexión:
-    - redis.Redis()
-    - redis.from_url()
-    - Soporte asíncrono (await ping())
+    Simula Redis cubriendo todos los casos de conexión.
     """
-    # Creamos un Mock que funciona tanto síncrono como asíncrono
     redis_instance = MagicMock()
     redis_instance.ping.return_value = True
 
-    # Si la app usa await redis.ping(), devolvemos un corutina que da True
     async def async_ping():
         return True
 
-    redis_instance.ping.side_effect = None  # Reset side effects
+    redis_instance.ping.side_effect = None
 
-    # Truco: Si se llama como función normal devuelve True, si se espera, funciona también.
-    # Pero para simplificar, parcheamos ambas clases.
-
-    with patch("redis.Redis", return_value=redis_instance) as mock_redis_cls, patch(
+    with patch("redis.Redis", return_value=redis_instance), patch(
         "redis.from_url", return_value=redis_instance
-    ) as mock_from_url:
-
+    ):
         yield redis_instance
 
 
@@ -55,8 +46,8 @@ def mock_redis_global():
 @pytest.fixture(scope="function")
 def db_session():
     from app.db.database import Base
-
-    # Importamos modelos
+    
+    # Importamos modelos para asegurar que SQLAlchemy los registre
     from app.models.gpu import GPU
 
     SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -77,7 +68,7 @@ def db_session():
         Base.metadata.drop_all(bind=engine)
 
 
-# --- 4. CLIENTE FASTAPI ---
+# --- 4. CLIENTE FASTAPI (CORREGIDO PARA HTTPX 0.28+) ---
 @pytest.fixture(scope="function")
 def client(db_session):
     from app.main import app
@@ -91,7 +82,11 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
+    # 👇 CAMBIO CLAVE: Usamos ASGITransport en lugar de pasar 'app' directo
+    transport = httpx.ASGITransport(app=app)
+    
+    # Configuramos el cliente manualmente para ser compatible con versiones nuevas
+    with httpx.Client(transport=transport, base_url="http://testserver") as test_client:
         yield test_client
 
     app.dependency_overrides.clear()
