@@ -24,17 +24,17 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 18
-        cache: 'npm'
-        cache-dependency-path: apps/frontend/package-lock.json
+        # Quitamos el caché por ahora para evitar el error de "file not found"
+        # cache: 'npm'
+        # cache-dependency-path: apps/frontend/package-lock.json
 
     - name: 📦 Install Dependencies
       run: |
         cd apps/frontend
-        npm ci
+        # Usamos 'npm install' en lugar de 'npm ci' porque es más flexible
+        npm install
 
     - name: 🏗️ Build Project (Check for errors)
       run: |
         cd apps/frontend
         npm run build
-      # Si esto falla, significa que hay un error de código en React.
-      # Si pasa, el código es seguro para mezclarse.
