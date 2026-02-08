@@ -7,10 +7,17 @@ on:
       - 'apps/backend/**'
       - '.github/workflows/backend-ci.yml'
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: gpuchile-backend
   EKS_CLUSTER_NAME: gpuchile-cluster
+
+
 
 jobs:
   # 🕵️ JOB 1: CALIDAD DE CÓDIGO (Linting, Testing & Security)
