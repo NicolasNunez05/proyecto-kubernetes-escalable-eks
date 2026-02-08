@@ -1,9 +1,7 @@
 import os
 import sys
 import pytest
-import asyncio
-import httpx
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 # --- 1. CONFIGURACIÓN DE ENTORNO ---
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -17,6 +15,7 @@ os.environ["TESTING"] = "true"
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -26,7 +25,7 @@ from sqlalchemy.pool import StaticPool
 @pytest.fixture(scope="session", autouse=True)
 def mock_redis_global():
     """
-    Simula Redis cubriendo todos los casos de conexión.
+    Simula Redis para evitar conexión real durante los tests.
     """
     redis_instance = MagicMock()
     redis_instance.ping.return_value = True
@@ -47,7 +46,7 @@ def mock_redis_global():
 def db_session():
     from app.db.database import Base
 
-    # Importamos modelos para asegurar que SQLAlchemy los registre
+    # Importar modelos para que SQLAlchemy los registre
     from app.models.gpu import GPU
 
     SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -68,7 +67,7 @@ def db_session():
         Base.metadata.drop_all(bind=engine)
 
 
-# --- 4. CLIENTE FASTAPI (CORREGIDO PARA HTTPX 0.28+) ---
+# --- 4. CLIENTE FASTAPI (VERSIÓN ESTÁNDAR) ---
 @pytest.fixture(scope="function")
 def client(db_session):
     from app.main import app
@@ -82,11 +81,8 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # 👇 CAMBIO CLAVE: Usamos ASGITransport en lugar de pasar 'app' directo
-    transport = httpx.ASGITransport(app=app)
-
-    # Configuramos el cliente manualmente para ser compatible con versiones nuevas
-    with httpx.Client(transport=transport, base_url="http://testserver") as test_client:
+    # Al usar httpx==0.27.2, TestClient funciona perfectamente
+    with TestClient(app) as test_client:
         yield test_client
 
     app.dependency_overrides.clear()
