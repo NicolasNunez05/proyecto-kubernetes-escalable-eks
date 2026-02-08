@@ -47,3 +47,5 @@ terraform.rc
 .kube/
 *.crt
 *.key
+
+kubernetes/secrets.yaml
