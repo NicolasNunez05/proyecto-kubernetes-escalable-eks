@@ -2,12 +2,9 @@ name: Backend CI/CD (Kind + LocalStack) 🐳
 
 on:
   push:
-    branches: [main, develop]
-    paths:
-      - 'apps/backend/**'
-      - '.github/workflows/backend-ci-local.yml'
-  pull_request:
-    branches: [main]
+    branches: [ "main" ]
+  
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
