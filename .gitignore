@@ -1,60 +1,49 @@
-# Local .terraform directories
-.terraform/
+# --- SISTEMA / IDEs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
 
-# .tfstate files
-*.tfstate
-*.tfstate.*
-
-# Crash log files
-crash.log
-crash.*.log
-
-# Exclude all .tfvars files, which are likely to contain sensitive data, such as
-# password, private keys, and other secrets. These should not be part of version 
-# control as they are data points which are potentially sensitive and subject 
-# to change depending on the environment.
-*.tfvars
-*.tfvars.json
-
-# Ignore override files as they are usually used to override resources locally and so
-# are not checked in
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# Ignore transient lock info files created by terraform apply
-.terraform.tfstate.lock.info
-
-# Include override files you do wish to add to version control using negated pattern
-# !example_override.tf
-
-# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
-# example: *tfplan*
-
-# Ignore CLI configuration files
-.terraformrc
-terraform.rc
-
-# Python
+# --- PYTHON / BACKEND ---
 __pycache__/
 *.py[cod]
+*$py.class
 venv/
+.venv/
+env/
 .env
+.env.*
+*.log
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
 
-# Node
+# --- NODE / FRONTEND ---
 node_modules/
 dist/
 build/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Terraform
-.terraform/
+# --- TERRAFORM (CRÍTICO: ESTO ES LO QUE TE FALTA) ---
+# Ignorar la carpeta de plugins y modulos descargados
+**/.terraform/
+
+# Ignorar estado con claves secretas
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
+crash.log
+*.tfvars
+override.tf
+override.tf.json
+.terraform.rc
+terraform.rc
 
-# IDEs
-.vscode/
-.idea/
-
-# OS
-.DS_Store
+# --- KUBERNETES / DOCKER ---
+.kube/
+*.crt
+*.key

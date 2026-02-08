@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpuchile-frontend
+  namespace: default
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: 380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-frontend:latest
+          imagePullPolicy: Always
+          
+          env:
+            - name: VITE_API_URL
+              value: "http://ad519c89537e8443d8b899e35db9d1cd-361311791.us-east-1.elb.amazonaws.com:8000/api"
+
+          # 👇 AQUÍ ESTÁ LA MAGIA 👇
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "🔧 Iniciando parches..."
+              
+              # 1. Arreglar el error de UUID (lo que ya tenías)
+              find src -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/crypto.randomUUID()/Math.random().toString(36).substring(7)/g'
+              
+              # 2. NUEVO: Arreglar las Imágenes (Object Fit)
+              # Buscamos el archivo ProductCard.tsx y cambiamos el estilo de la imagen
+              # Cambiamos 'object-cover' por 'object-contain' (ajustar), 'h-64' (altura fija) y 'p-4' (relleno)
+              find src -name "ProductCard.tsx" -exec sed -i 's/object-cover/object-contain h-64 w-full bg-white p-4/g' {} +
+              
+              echo "✅ Estilos de imagen corregidos."
+              
+              # Iniciar la app
+              npm run dev -- --host 0.0.0.0 --port 5173
+
+          ports:
+            - containerPort: 5173
+          
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+          
+          volumeMounts:
+            - name: nginx-config-vol
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: vite-config-vol
+              mountPath: /app/vite.config.js
+              subPath: vite.config.js
+
+      volumes:
+        - name: nginx-config-vol
+          configMap:
+            name: nginx-config
+        - name: vite-config-vol
+          configMap:
+            name: vite-extra-config

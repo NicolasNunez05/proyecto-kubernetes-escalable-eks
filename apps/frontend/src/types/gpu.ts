@@ -1,28 +1,36 @@
 /**
- * 🎯 QUÉ HACE: Define tipos para TypeScript
- * 📍 CUÁNDO SE USA: Autocompletado y validación
+ * Interfaz GPU basada en el modelo del backend
+ * Debe coincidir con la respuesta de FastAPI
  */
 export interface GPU {
   id: number;
+  name: string;
+  brand: string;
   model: string;
-  brand: 'NVIDIA' | 'AMD' | 'Intel';
-  series?: string;
-  vram: number;
   price: number;
   stock: number;
-  image_url: string;
-  thumbnail_url: string;
-  created_at: string;
+  vram: number;
+  cuda_cores: number | null;
+  image_url: string | null;
+  description: string | null;
+  created_at: string; // ISO 8601 datetime
 }
 
-export interface GPUFilter {
-  brand?: string[];
-  vram_min?: number;
-  vram_max?: number;
-  price_min?: number;
-  price_max?: number;
-  in_stock?: boolean;
-  sort?: 'price_asc' | 'price_desc' | 'vram_desc';
+/**
+ * Filtros para búsqueda de GPUs
+ */
+export interface GPUFilters {
+  brand?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minVram?: number;
+}
+
+/**
+ * Query params para paginación
+ */
+export interface GPUQueryParams {
+  skip?: number;
   limit?: number;
-  offset?: number;
+  brand?: string;
 }

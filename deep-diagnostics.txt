@@ -1,0 +1,69 @@
+=== POD DESCRIPTION ===
+      memory:  512Mi
+    Requests:
+      cpu:     250m
+      memory:  256Mi
+    Environment Variables from:
+      db-credentials  Secret  Optional: false
+    Environment:
+      AWS_REGION:                   us-east-1
+      S3_BUCKET_NAME:               gpuchile-images-dev-nicolas-2026
+      REDIS_URL:                    redis://redis-service.default.svc.cluster.local:6379/0
+      AWS_STS_REGIONAL_ENDPOINTS:   regional
+      AWS_ROLE_ARN:                 arn:aws:iam::380002980493:role/gpuchile-cluster-gpuchile-backend-sa-role
+      AWS_WEB_IDENTITY_TOKEN_FILE:  /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+    Mounts:
+      /var/run/secrets/eks.amazonaws.com/serviceaccount from aws-iam-token (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-n44kt (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:
+  aws-iam-token:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  86400
+  kube-api-access-n44kt:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                 From               Message
+  ----     ------     ----                ----               -------
+  Normal   Scheduled  10m                 default-scheduler  Successfully assigned default/gpuchile-backend-7875db4b66-4rhbv to ip-10-0-102-77.ec2.internal
+  Normal   Pulled     10m                 kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 137ms (137ms including waiting)
+  Normal   Pulled     8m24s               kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 135ms (135ms including waiting)
+  Normal   Pulled     5m55s               kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 141ms (141ms including waiting)
+  Normal   Pulled     3m11s               kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 133ms (133ms including waiting)
+  Warning  BackOff    17s (x7 over 6m9s)  kubelet            spec.containers{backend}: Back-off restarting failed container backend in pod gpuchile-backend-7875db4b66-4rhbv_default(822eb9c2-8017-4d02-b9be-291accbcadf8)
+  Normal   Pulling    3s (x5 over 10m)    kubelet            spec.containers{backend}: Pulling image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest"
+  Normal   Created    2s (x5 over 10m)    kubelet            spec.containers{backend}: Created container: backend
+  Normal   Started    2s (x5 over 10m)    kubelet            spec.containers{backend}: Started container backend
+  Normal   Pulled     2s                  kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 161ms (161ms including waiting)
+
+=== POD IP ===
+10.0.102.252
+
+=== CONTAINER STATUS ===
+
+=== ENVIRONMENT VARS (DB/REDIS) ===
+DATABASE_URL=postgresql://postgres:postgres123@gpuchile-db-dev.co7isg2qyv82.us-east-1.rds.amazonaws.com:5432/gpuchile
+REDIS_URL=redis://redis-service.default.svc.cluster.local:6379/0
+REDIS_SERVICE_SERVICE_PORT=6379
+REDIS_SERVICE_PORT_6379_TCP_PORT=6379
+REDIS_SERVICE_PORT=tcp://172.20.144.242:6379
+REDIS_SERVICE_PORT_6379_TCP_ADDR=172.20.144.242
+REDIS_SERVICE_PORT_6379_TCP_PROTO=tcp
+REDIS_SERVICE_SERVICE_HOST=172.20.144.242
+REDIS_SERVICE_PORT_6379_TCP=tcp://172.20.144.242:6379
+
+=== PROCESSES IN POD ===

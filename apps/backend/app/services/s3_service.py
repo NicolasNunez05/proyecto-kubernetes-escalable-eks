@@ -1,40 +1,45 @@
-"""
-🎯 QUÉ HACE: Sube imágenes a S3, genera key único
-📍 CUÁNDO SE USA: POST /api/admin/gpus/{id}/upload
-"""
 import boto3
 import uuid
+import os
 from app.config import settings
+from botocore.exceptions import NoCredentialsError
 
-s3_client = boto3.client('s3', region_name=settings.S3_REGION)
+
+# Cliente S3 Singleton
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=settings.S3_REGION
+)
 
 def upload_image(file_bytes: bytes, original_filename: str) -> str:
     """
-    Sube imagen a S3 /original/ con UUID
-    
-    Returns:
-        image_key: "rtx4090-abc123.jpg" (solo filename, no URL)
+    Sube bytes a S3 en la carpeta /original/ y retorna el Key único.
     """
-    # Generar key único
-    extension = original_filename.split('.')[-1]
-    image_key = f"{uuid.uuid4()}.{extension}"
+    # 1. Generar nombre único: "rtx4090.jpg" -> "uuid-v4.jpg"
+    ext = original_filename.split('.')[-1]
+    unique_filename = f"{uuid.uuid4()}.{ext}"
     
-    # Upload a /original/
-    s3_client.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=f"original/{image_key}",
-        Body=file_bytes,
-        ContentType=f"image/{extension}"
-    )
+    # 2. Definir ruta en S3 (Convention)
+    s3_key = f"original/{unique_filename}"
     
-    # ✅ NO guardamos URL completa, solo el key
-    # Lambda creará /thumbnails/{image_key} automáticamente
-    return image_key
+    # 3. Subir
+    try:
+        s3_client.put_object(
+            Bucket=settings.S3_BUCKET,
+            Key=s3_key,
+            Body=file_bytes,
+            ContentType=f"image/{ext}"
+        )
+    except NoCredentialsError:
+        # Fallback para desarrollo local si no hay AWS keys
+        print("⚠️ [MOCK] No AWS Credentials. Simulando subida a S3.")
+        return unique_filename
+    except Exception as e:
+        print(f"❌ Error S3: {e}")
+        raise e
 
-def get_image_url(image_key: str, is_thumbnail: bool = False) -> str:
-    """
-    Construye URL por convención
-    ✅ Convention over Configuration
-    """
-    folder = "thumbnails" if is_thumbnail else "original"
-    return f"https://{settings.S3_BUCKET}.s3.{settings.S3_REGION}.amazonaws.com/{folder}/{image_key}"
+    # 4. Retornar SOLO el nombre del archivo (sin carpeta)
+    # El modelo Pydantic construirá la URL completa
+    return unique_filename

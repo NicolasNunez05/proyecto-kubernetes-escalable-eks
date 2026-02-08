@@ -1,12 +1,15 @@
-fastapi>=0.100.0
-uvicorn>=0.23.0
-sqlalchemy>=2.0.0
-psycopg2-binary
-pydantic>=2.0.0
-pydantic-settings
-python-jose[cryptography]
-passlib[bcrypt]
-python-multipart
-boto3
-slowapi
-redis
+# Testing Framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+httpx==0.25.2
+
+# Linting & Code Quality
+flake8==6.1.0
+black==23.12.1
+isort==5.13.2
+
+# Security
+bandit==1.7.5
+safety==2.3.5

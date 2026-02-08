@@ -1,0 +1,62 @@
+# ============================================
+# CONFIGURACIÓN DEL FRONTEND - GPUCHILE
+# ============================================
+
+replicaCount: 2  # Dos réplicas para alta disponibilidad
+
+image:
+  repository: 380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-frontend
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# Recursos (Frontend estático en Nginx es super ligero)
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Health Checks (Nginx responde en /)
+livenessProbe:
+  httpGet:
+    path: /healt
+    port: 80
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /healt
+    port: 80
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# Networking
+service:
+  type: LoadBalancer  # Cambia a ClusterIP si usas Ingress
+  port: 80
+  targetPort: 80
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+# Ingress (Descomentado cuando tengas dominio)
+ingress:
+  enabled: false  # Cambia a true cuando uses dominio custom
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: gpuchile.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: gpuchile-tls
+      hosts:
+        - gpuchile.com
+
+# Variables de entorno inyectadas en el build (para Vite)
+#env:
+  #VITE_API_URL: "http://BACKEND_LOAD_BALANCER_URL/api"  # ⚠️ Actualizar después del deploy del backend

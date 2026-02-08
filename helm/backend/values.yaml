@@ -1,0 +1,108 @@
+# ============================================
+# CONFIGURACIÓN DEL BACKEND - GPUCHILE
+# ============================================
+
+replicaCount: 1  # HPA controlará esto
+
+image:
+  repository: 380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# Recursos Minimal (Optimizado para costos)
+resources:
+  limits:
+    cpu: 500m
+    memory: 768Mi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Autoscaling (1-3 réplicas según carga)
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+# Health Checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+# Service Account (para IRSA - Acceso a S3/Secrets Manager)
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "PLACEHOLDER_ROLE_ARN"  # Se reemplaza después
+  name: gpuchile-backend-sa
+
+# Networking
+service:
+  type: LoadBalancer  # Opción simple, cambia a ClusterIP si usas Ingress
+  port: 80
+  targetPort: 8000
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+# Ingress (Descomentado cuando tengas dominio + cert-manager)
+ingress:
+  enabled: false  # Cambia a true cuando uses dominio custom
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: api.gpuchile.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: api-gpuchile-tls
+      hosts:
+        - api.gpuchile.com
+
+# External Secrets (Sincroniza credenciales de AWS Secrets Manager)
+externalSecrets:
+  enabled: true
+  secretStoreName: aws-secrets-store
+  refreshInterval: 1h
+  target:
+    name: backend-secrets
+  data:
+    - secretKey: DATABASE_URL
+      remoteRef:
+        key: gpuchile/dev/db
+        property: url
+    - secretKey: REDIS_URL
+      remoteRef:
+        key: gpuchile/dev/redis
+        property: url
+    - secretKey: JWT_SECRET
+      remoteRef:
+        key: gpuchile/dev/jwt
+        property: secret
+
+# Variables de Entorno (No sensibles)
+env:
+  - name: ENVIRONMENT
+    value: "production"
+  - name: AWS_REGION
+    value: "us-east-1"
+  - name: S3_BUCKET
+    value: "gpuchile-images-dev-nicolas-2026"
+  - name: LOG_LEVEL
+    value: "INFO"

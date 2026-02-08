@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gpuchile-frontend.fullname" . }}
+  labels:
+    app: {{ include "gpuchile-frontend.name" . }}
+    version: {{ .Chart.AppVersion }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "gpuchile-frontend.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "gpuchile-frontend.name" . }}
+        version: {{ .Chart.AppVersion }}
+    spec:
+      containers:
+      - name: frontend
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        
+        # Mount custom nginx.conf
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+          readOnly: true
+        
+        # Health Checks
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe | nindent 10 }}
+        
+        # Resources
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: {{ include "gpuchile-frontend.fullname" . }}-nginx-config

@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpuchile-backend
+  namespace: default
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: gpuchile-backend-sa
+      containers:
+        - name: backend
+          image: 380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          
+          env:
+            # --- Variables Individuales ---
+            - name: SECRET_KEY
+              value: "supersecretkey123"
+            - name: DB_HOST
+              value: "gpuchile-db-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "gpuchile_db"
+            - name: DB_USER
+              value: "postgres"
+            
+            # --- La Contraseña (desde el secreto) ---
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db-password
+
+            # 👇👇👇 EL ARREGLO MÁGICO 👇👇👇
+            # Kubernetes sustituye $(VARIABLE) con los valores de arriba
+            - name: DATABASE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)"
+
+            # --- Otras Configs ---
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: S3_BUCKET_NAME
+              value: "gpuchile-images-dev-nicolas-2026"
+            - name: REDIS_URL
+              value: "redis://redis-service.default.svc.cluster.local:6379/0"
+
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15

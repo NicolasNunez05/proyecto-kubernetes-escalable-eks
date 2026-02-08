@@ -1,0 +1,145 @@
+name: Backend CI/CD (Blindado 🛡️)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: gpuchile-backend
+  EKS_CLUSTER_NAME: gpuchile-cluster
+
+jobs:
+  # 🕵️ JOB 1: CALIDAD DE CÓDIGO (Linting & Testing)
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('apps/backend/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          cd apps/backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: 🔍 Linting with Flake8
+        run: |
+          cd apps/backend
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+
+      - name: 🎨 Check Code Formatting (Black)
+        run: |
+          cd apps/backend
+          # Instalar Black si no está (aunque ya debería estar por requirements-test.txt)
+          pip install black
+          # El flag --check solo revisa, no cambia nada. Si está mal formateado, falla.
+          black . --check --diff
+
+      - name: 🧪 Running Tests with Coverage
+        run: |
+          cd apps/backend
+          pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: 📊 Upload Coverage to Codecov (Optional)
+        if: success()
+        uses: codecov/codecov-action@v3
+        with:
+          file: apps/backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+
+      - name: 🔒 Security Scan with Bandit
+        run: |
+          cd apps/backend
+          bandit -r app/ -f json -o bandit-report.json || true
+          bandit -r app/ -ll
+
+  # 🚀 JOB 2: CONSTRUCCIÓN, SEGURIDAD Y DESPLIEGUE
+  build-secure-deploy:
+    needs: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate Tag
+        id: tag
+        run: |
+          echo "VERSION_TAG=v-${{ github.run_number }}-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          cd apps/backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.VERSION_TAG }} .
+
+      - name: 🦠 Security Scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.VERSION_TAG }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Push Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.VERSION_TAG }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Deploy to EKS
+        id: deploy-step
+        run: |
+          kubectl set image deployment/gpuchile-backend backend=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.VERSION_TAG }} -n default
+          kubectl rollout status deployment/gpuchile-backend -n default --timeout=120s
+
+      - name: 🚑 Rollback on Failure
+        if: failure() && steps.deploy-step.outcome == 'failure'
+        run: |
+          echo "🚨 Despliegue fallido. Iniciando Rollback..."
+          kubectl rollout undo deployment/gpuchile-backend -n default
+          echo "✅ Rollback completado"

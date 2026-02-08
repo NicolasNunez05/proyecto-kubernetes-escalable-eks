@@ -1,29 +1,20 @@
-"""
-🎯 QUÉ HACE: Define estructura de requests/responses
-📍 CUÁNDO SE USA: Validación automática de FastAPI
-"""
-from pydantic import BaseModel, Field
-from typing import Optional
-from datetime import date
+from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime
+from datetime import datetime
+from app.db.database import Base
 
-class GPUBase(BaseModel):
-    model: str = Field(..., max_length=100)
-    brand: str = Field(..., max_length=50)
-    series: Optional[str] = None
-    vram: int = Field(..., ge=2, le=128)  # Entre 2GB y 128GB
-    price: float = Field(..., ge=0)
-    stock: int = Field(default=0, ge=0)
+class GPU(Base):
+    __tablename__ = "gpus"
 
-class GPUCreate(GPUBase):
-    """Para POST /api/admin/gpus"""
-    image_key: Optional[str] = None  # ✅ Solo guardamos key, no URL completa
-
-class GPUResponse(GPUBase):
-    """Para GET /api/gpus"""
-    id: int
-    image_url: str  # ✅ Generada por @property en servicio
-    thumbnail_url: str  # ✅ Convention: /thumbnails/{image_key}
-    created_at: datetime
-    
-    class Config:
-        orm_mode = True
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    brand = Column(String, index=True)
+    model = Column(String, index=True)
+    price = Column(Float)
+    vram = Column(Integer)
+    cuda_cores = Column(Integer, nullable=True)
+    stock = Column(Integer, default=0)
+    image_url = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    is_featured = Column(Boolean, default=False)
+    # ESTA ES LA LÍNEA QUE FALTABA Y CAUSABA EL ERROR SQL:
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -1,0 +1,80 @@
+Name:             gpuchile-backend-7875db4b66-4rhbv
+Namespace:        default
+Priority:         0
+Service Account:  gpuchile-backend-sa
+Node:             ip-10-0-102-77.ec2.internal/10.0.102.77
+Start Time:       Fri, 06 Feb 2026 13:47:19 -0300
+Labels:           app=backend
+                  pod-template-hash=7875db4b66
+Annotations:      kubectl.kubernetes.io/restartedAt: 2026-02-06T13:27:40-03:00
+Status:           Running
+IP:               10.0.102.252
+IPs:
+  IP:           10.0.102.252
+Controlled By:  ReplicaSet/gpuchile-backend-7875db4b66
+Containers:
+  backend:
+    Container ID:   containerd://eeff1cb3dd8119c2f2309693f266628e3596324ef93a837cf41b4617d9e56bc2
+    Image:          380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest
+    Image ID:       380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend@sha256:547a5a0939e724240099b98eb4c556f273f72750c54cf23e230c80c04795e5fd
+    Port:           8000/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Fri, 06 Feb 2026 13:52:03 -0300
+    Last State:     Terminated
+      Reason:       Error
+      Exit Code:    1
+      Started:      Fri, 06 Feb 2026 13:49:33 -0300
+      Finished:     Fri, 06 Feb 2026 13:51:48 -0300
+    Ready:          True
+    Restart Count:  2
+    Limits:
+      cpu:     500m
+      memory:  512Mi
+    Requests:
+      cpu:     250m
+      memory:  256Mi
+    Environment Variables from:
+      db-credentials  Secret  Optional: false
+    Environment:
+      AWS_REGION:                   us-east-1
+      S3_BUCKET_NAME:               gpuchile-images-dev-nicolas-2026
+      REDIS_URL:                    redis://redis-service.default.svc.cluster.local:6379/0
+      AWS_STS_REGIONAL_ENDPOINTS:   regional
+      AWS_ROLE_ARN:                 arn:aws:iam::380002980493:role/gpuchile-cluster-gpuchile-backend-sa-role
+      AWS_WEB_IDENTITY_TOKEN_FILE:  /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+    Mounts:
+      /var/run/secrets/eks.amazonaws.com/serviceaccount from aws-iam-token (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-n44kt (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:
+  aws-iam-token:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  86400
+  kube-api-access-n44kt:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                 From               Message
+  ----     ------     ----                ----               -------
+  Normal   Scheduled  4m44s               default-scheduler  Successfully assigned default/gpuchile-backend-7875db4b66-4rhbv to ip-10-0-102-77.ec2.internal
+  Normal   Pulled     4m44s               kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 137ms (137ms including waiting)
+  Normal   Pulled     2m30s               kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 135ms (135ms including waiting)
+  Warning  BackOff    15s                 kubelet            spec.containers{backend}: Back-off restarting failed container backend in pod gpuchile-backend-7875db4b66-4rhbv_default(822eb9c2-8017-4d02-b9be-291accbcadf8)
+  Normal   Pulling    1s (x3 over 4m44s)  kubelet            spec.containers{backend}: Pulling image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest"
+  Normal   Pulled     1s                  kubelet            spec.containers{backend}: Successfully pulled image "380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest" in 141ms (141ms including waiting)
+  Normal   Created    0s (x3 over 4m44s)  kubelet            spec.containers{backend}: Created container: backend
+  Normal   Started    0s (x3 over 4m44s)  kubelet            spec.containers{backend}: Started container backend

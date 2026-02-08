@@ -1,0 +1,16 @@
+# GpuChile Stack - Endpoints
+
+Backend API:
+http://ad519c89537e8443d8b899e35db9d1cd-361311791.us-east-1.elb.amazonaws.com:8000
+
+Health Check:
+http://ad519c89537e8443d8b899e35db9d1cd-361311791.us-east-1.elb.amazonaws.com:8000/health
+
+API GPUs:
+http://ad519c89537e8443d8b899e35db9d1cd-361311791.us-east-1.elb.amazonaws.com:8000/api/gpus
+
+Swagger UI:
+http://ad519c89537e8443d8b899e35db9d1cd-361311791.us-east-1.elb.amazonaws.com:8000/docs
+
+Frontend:
+(pending)

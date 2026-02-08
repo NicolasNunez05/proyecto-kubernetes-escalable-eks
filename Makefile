@@ -1,39 +1,59 @@
-.PHONY: dev test build deploy
+.PHONY: help build up down logs clean seed test
 
-# Desarrollo local
-dev-backend:
-	cd apps/backend && uvicorn app.main:app --reload
+# Variables
+COMPOSE=docker-compose
+BACKEND_CONTAINER=gpuchile_backend
+FRONTEND_CONTAINER=gpuchile_frontend
+DB_CONTAINER=gpuchile_postgres
 
-dev-frontend:
-	cd apps/frontend && npm start
+help: ## Muestra esta ayuda
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-# Tests
-test-backend:
-	cd apps/backend && pytest -v
+build: ## Construye las imágenes
+	$(COMPOSE) build
 
-test-integration:
-	cd apps/backend && pytest tests/ -m integration
+up: ## Levanta todos los servicios
+	$(COMPOSE) up -d
 
-# Docker
-build-backend:
-	docker build -t gpuchile/backend:latest apps/backend
+down: ## Detiene todos los servicios
+	$(COMPOSE) down
 
-build-frontend:
-	docker build -t gpuchile/frontend:latest apps/frontend
+logs: ## Muestra logs de todos los servicios
+	$(COMPOSE) logs -f
 
-# Terraform
-tf-init:
-	cd terraform && terraform init
+logs-backend: ## Logs del backend
+	$(COMPOSE) logs -f backend
 
-tf-plan:
-	cd terraform && terraform plan
+logs-frontend: ## Logs del frontend
+	$(COMPOSE) logs -f frontend
 
-tf-apply:
-	cd terraform && terraform apply -auto-approve
+restart: down up ## Reinicia todos los servicios
 
-# Kubernetes
-k8s-apply:
-	kubectl apply -f kubernetes/base/
+clean: ## Limpia containers, volumes y cache
+	$(COMPOSE) down -v
+	docker system prune -f
 
-helm-backend:
-	helm upgrade --install backend helm/backend -f helm/backend/values-prod.yaml
+seed: ## Ejecuta el seed de datos (solo si backend está corriendo)
+	$(COMPOSE) exec backend python -m app.seed_data
+
+shell-backend: ## Shell interactivo en el backend
+	$(COMPOSE) exec backend /bin/bash
+
+shell-db: ## Accede a psql
+	$(COMPOSE) exec db psql -U postgres -d gpuchile
+
+shell-redis: ## Accede a redis-cli
+	$(COMPOSE) exec redis redis-cli -a redis123
+
+test-backend: ## Ejecuta tests del backend
+	$(COMPOSE) exec backend pytest
+
+ps: ## Muestra estado de los servicios
+	$(COMPOSE) ps
+
+health: ## Verifica salud de los servicios
+	@echo "🔍 Verificando servicios..."
+	@curl -s http://localhost:8000/health | jq || echo "❌ Backend no responde"
+	@curl -s http://localhost:5173 > /dev/null && echo "✅ Frontend OK" || echo "❌ Frontend no responde"
+
+rebuild: clean build up ## Reconstruye todo desde cero

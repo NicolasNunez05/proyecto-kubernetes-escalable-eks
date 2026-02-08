@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: default
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # Compresión Gzip para velocidad
+        gzip on;
+        gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+
+        # Caché de archivos estáticos
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # ⚡ MAGIA: Redirige /api hacia el Backend interno
+        location /api/ {
+            # Apunta al servicio 'gpuchile-backend' que creamos antes
+            proxy_pass http://gpuchile-backend.default.svc.cluster.local:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # React Router (cualquier otra ruta va a index.html)
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+        
+        location /health {
+            return 200 "healthy\n";
+        }
+    }

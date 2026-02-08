@@ -1,0 +1,38 @@
+=== SECURITY GROUPS ===
+RDS SG: sg-082e01893875ee12f
+EKS SG: sg-0855d4465534cdc26
+
+=== RDS SG RULES (Port 5432) ===
+[
+    {
+        "IpProtocol": "tcp",
+        "FromPort": 5432,
+        "ToPort": 5432,
+        "UserIdGroupPairs": [
+            {
+                "Description": "PostgreSQL from EKS",
+                "UserId": "380002980493",
+                "GroupId": "sg-031747854ba1f5d3c"
+            },
+            {
+                "UserId": "380002980493",
+                "GroupId": "sg-0855d4465534cdc26"
+            }
+        ],
+        "IpRanges": [],
+        "Ipv6Ranges": [],
+        "PrefixListIds": []
+    }
+]
+
+=== POD STATUS ===
+NAME                                READY   STATUS    RESTARTS   AGE
+gpuchile-backend-7875db4b66-4rhbv   1/1     Running   0          119s
+
+=== POD LOGS (últimas 20 líneas) ===
+
+=== BACKEND HEALTH CHECK ===
+Backend not ready
+
+=== API TEST ===
+API not ready

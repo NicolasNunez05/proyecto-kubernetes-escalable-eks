@@ -1,0 +1,70 @@
+# 1. SOLICITUD DE DISCO REAL (PVC)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi  # Pedimos 10GB reales a AWS
+---
+# 2. BASE DE DATOS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpuchile-db
+  labels:
+    app: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_DB
+          value: "gpuchile_db"
+        # Seguridad (Tu secreto ya está arreglado)
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: db-password
+        ports:
+        - containerPort: 5432
+        
+        # 3. MONTAJE DEL DISCO
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: postgres-data
+      
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc  # Conecta con la solicitud de arriba
+
+---
+# 3. SERVICIO DE RED
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpuchile-db-service
+spec:
+  selector:
+    app: db
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
