@@ -46,7 +46,7 @@ def mock_redis_global():
 @pytest.fixture(scope="function")
 def db_session():
     from app.db.database import Base
-    
+
     # Importamos modelos para asegurar que SQLAlchemy los registre
     from app.models.gpu import GPU
 
@@ -84,7 +84,7 @@ def client(db_session):
 
     # 👇 CAMBIO CLAVE: Usamos ASGITransport en lugar de pasar 'app' directo
     transport = httpx.ASGITransport(app=app)
-    
+
     # Configuramos el cliente manualmente para ser compatible con versiones nuevas
     with httpx.Client(transport=transport, base_url="http://testserver") as test_client:
         yield test_client
