@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime
 from datetime import datetime
 from app.db.database import Base
 
+
 class GPU(Base):
     __tablename__ = "gpus"
 

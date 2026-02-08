@@ -8,6 +8,7 @@ from app.models.gpu import GPU as GPUSchema
 
 router = APIRouter()
 
+
 @router.get("/", response_model=List[GPUSchema])
 def read_gpus(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """

@@ -1,9 +1,11 @@
 """
 Health check and basic endpoint tests
 """
+
 import pytest
 from fastapi import status
 from unittest.mock import patch
+
 
 def test_root_endpoint(client):
     """
@@ -23,22 +25,23 @@ def test_health_endpoint_success(client):
     """
     response = client.get("/health")
     assert response.status_code == status.HTTP_200_OK
-    
+
     data = response.json()
-    
+
     # Validamos que responda JSON válido con timestamps
     assert "services" in data
     assert "timestamp" in data
-    
+
     # NOTA: En entornos de test complejos, el estado puede variar si el mock
     # no intercepta la conexión asíncrona perfectamente.
     # Lo importante es que la API responda 200 (está viva).
     if data.get("status") == "error":
         # Si da error en test, verificamos que sea por algo esperado (conexión falsa)
         # Pero para pasar el CI/CD final, validamos que la estructura sea correcta.
-        pass 
+        pass
     else:
         assert data["status"] == "ok"
+
 
 def test_health_endpoint_degraded(client):
     """
@@ -46,13 +49,13 @@ def test_health_endpoint_degraded(client):
     Usamos un patch local solo para este test.
     """
     # Forzamos que Redis falle SOLO en este test
-    with patch('redis.Redis.ping', side_effect=Exception("Redis connection failed")):
+    with patch("redis.Redis.ping", side_effect=Exception("Redis connection failed")):
         response = client.get("/health")
-        
+
         # Debe responder 200 pero indicar error en el body
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        
+
         # Aquí el status debería ser error o degraded
         # assert data["status"] != "ok" # Descomenta si tu lógica lo soporta
 
@@ -65,11 +68,15 @@ def test_metrics_endpoint(client):
     assert response.status_code == status.HTTP_200_OK
     # Prometheus suele devolver texto plano
     # assert "text/plain" in response.headers["content-type"]
-    
+
     # Verificar que contiene métricas de Prometheus
     content = response.text
     # Buscamos métricas comunes
-    assert "python_info" in content or "process_cpu_seconds" in content or "http" in content
+    assert (
+        "python_info" in content
+        or "process_cpu_seconds" in content
+        or "http" in content
+    )
 
 
 def test_docs_endpoint(client):

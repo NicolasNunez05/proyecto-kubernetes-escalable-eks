@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import GPU as GPUModel
 from app.models.gpu import GPUCreate, GPU as GPUSchema
-from app.services.s3_service import upload_image # ¡Vamos a crear esto!
+from app.services.s3_service import upload_image  # ¡Vamos a crear esto!
 import json
 from typing import Optional
 
@@ -11,6 +11,7 @@ router = APIRouter()
 
 # ⚠️ NOTA: En un caso real, aquí iría: dependencies=[Depends(get_current_admin_user)]
 # Para el portfolio inicial, lo dejamos abierto o simulado para facilitar pruebas.
+
 
 @router.post("/gpus", response_model=GPUSchema, status_code=status.HTTP_201_CREATED)
 async def create_gpu(
@@ -20,9 +21,9 @@ async def create_gpu(
     price: float = Form(...),
     vram: int = Form(...),
     stock: int = Form(0),
-    file: UploadFile = File(...), # La imagen es obligatoria al crear
-    specs: str = Form("{}"), # JSON stringificado
-    db: Session = Depends(get_db)
+    file: UploadFile = File(...),  # La imagen es obligatoria al crear
+    specs: str = Form("{}"),  # JSON stringificado
+    db: Session = Depends(get_db),
 ):
     """
     Crea una GPU y sube su imagen a S3 (carpeta /original)
@@ -49,11 +50,11 @@ async def create_gpu(
         vram=vram,
         stock=stock,
         specs=specs_dict,
-        image_key=image_key # 👈 Aquí está la magia de la convención
+        image_key=image_key,  # 👈 Aquí está la magia de la convención
     )
-    
+
     db.add(new_gpu)
     db.commit()
     db.refresh(new_gpu)
-    
+
     return new_gpu

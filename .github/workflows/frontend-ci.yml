@@ -37,4 +37,6 @@ jobs:
     - name: 🏗️ Build Project (Check for errors)
       run: |
         cd apps/frontend
+        # Mantenemos 'npm run build' porque ahora TypeScript
+        # ya no fallará por esas pequeñeces.
         npm run build

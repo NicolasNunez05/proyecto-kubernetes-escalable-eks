@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.core.config import settings
+
 # ✅ ARREGLADO: Importamos User del nuevo archivo
 from app.models.user import User
 from app.schemas.token import TokenPayload
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
 
 def get_db() -> Generator:
     try:
@@ -19,6 +21,7 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
+
 
 def get_current_user(
     db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
@@ -37,6 +40,7 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
 
 def get_current_admin(
     current_user: User = Depends(get_current_user),

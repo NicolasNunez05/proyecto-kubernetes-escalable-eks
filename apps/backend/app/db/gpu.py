@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field, computed_field # ✅ Importar computed_field
+from pydantic import BaseModel, Field, computed_field  # ✅ Importar computed_field
 from typing import Optional, Dict, Any
 from datetime import datetime
 from app.config import settings
+
 
 # Base común
 class GPUBase(BaseModel):
@@ -15,20 +16,22 @@ class GPUBase(BaseModel):
     specs: Dict[str, Any] = Field(default_factory=dict)
     is_featured: bool = False
 
+
 class GPUCreate(GPUBase):
-    image_key: Optional[str] = None # Admin envía esto al crear
+    image_key: Optional[str] = None  # Admin envía esto al crear
+
 
 class GPU(GPUBase):
     id: int
     image_key: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
     # ✅ SENIOR WAY: Computed Fields
     # Esto agrega 'image_url' y 'thumbnail_url' al JSON de respuesta automáticamente
-    
+
     @computed_field
     @property
     def image_url(self) -> Optional[str]:
