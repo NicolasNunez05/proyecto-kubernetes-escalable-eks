@@ -14,13 +14,16 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting - AQUÍ ESTÁN LOS CAMBIOS */
-    "strict": true,                
-    "noUnusedLocals": false,       /* CAMBIO: Ignorar variables no usadas (React, env) */
-    "noUnusedParameters": false,   /* CAMBIO: Ignorar parámetros no usados */
+    /* Linting (Relajado para que pase el CI) */
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "allowJs": true,               /* NUEVO: Permitir importar archivos .jsx */
-    "noImplicitAny": false,        /* NUEVO: Permitir tipos 'any' implícitos */
+    "allowJs": true,
+    "noImplicitAny": false,
+
+    /* 👇👇 LA SOLUCIÓN MAGICA ESTÁ AQUÍ 👇👇 */
+    "types": ["vite/client"],
 
     /* Path alias */
     "baseUrl": ".",
