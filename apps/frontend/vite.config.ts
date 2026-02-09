@@ -13,7 +13,7 @@ export default defineConfig({
   },
   
   // ═══════════════════════════════════════════════════════════════════════
-  # Server Config (solo para dev local, no afecta producción)
+  // Server Config (solo para dev local, no afecta producción)
   // ═══════════════════════════════════════════════════════════════════════
   server: {
     host: '0.0.0.0',  // Crucial para Docker
