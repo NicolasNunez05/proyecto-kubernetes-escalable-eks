@@ -1,42 +1,327 @@
-name: Frontend CI (Quality Check)
+name: Frontend CI/CD (Kind + Nginx) 🎨
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, develop]
     paths:
-      - "apps/frontend/**"
-      - ".github/workflows/frontend-ci.yml"
+      - 'apps/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
   pull_request:
-    branches: [ "main" ]
-    paths:
-      - "apps/frontend/**"
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KIND_VERSION: v0.20.0
+  KUBECTL_VERSION: v1.28.0
+  NODE_VERSION: '20'
 
 jobs:
-  build-test:
-    name: Build & Lint React App
+  lint-and-build:
+    name: Lint, Build & Deploy to Kind
     runs-on: ubuntu-latest
-
+    
     steps:
-    - name: 📥 Checkout repository
-      uses: actions/checkout@v4
-
-    - name: 🟢 Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18
-        # Quitamos el caché por ahora para evitar el error de "file not found"
-        # cache: 'npm'
-        # cache-dependency-path: apps/frontend/package-lock.json
-
-    - name: 📦 Install Dependencies
-      run: |
-        cd apps/frontend
-        # Usamos 'npm install' en lugar de 'npm ci' porque es más flexible
-        npm install
-
-    - name: 🏗️ Build Project (Check for errors)
-      run: |
-        cd apps/frontend
-        # Mantenemos 'npm run build' porque ahora TypeScript
-        # ya no fallará por esas pequeñeces.
-        npm run build
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 1: SETUP & CHECKOUT
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+      
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 2: INSTALL & LINT
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: 📚 Install Dependencies
+        working-directory: apps/frontend
+        run: |
+          npm ci
+          echo "✅ Dependencies installed"
+      
+      - name: 🔍 Run Linter
+        working-directory: apps/frontend
+        run: |
+          npm run lint || echo "⚠️ Linter warnings (non-blocking)"
+        continue-on-error: true
+      
+      - name: 🏗️ Build Frontend
+        working-directory: apps/frontend
+        env:
+          VITE_API_URL: http://backend-service:8000/api
+        run: |
+          npm run build
+          echo "✅ Frontend built successfully"
+          
+          # Verificar que dist/ existe y tiene contenido
+          if [ ! -d "dist" ]; then
+            echo "❌ Build failed: dist/ folder not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/index.html" ]; then
+            echo "❌ Build failed: index.html not found"
+            exit 1
+          fi
+          
+          echo "📊 Build output size:"
+          du -sh dist/
+      
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 3: DOCKER BUILD
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: 🐳 Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🏗️ Build Docker Image
+        working-directory: apps/frontend
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=http://backend-service:8000/api \
+            -t gpuchile-frontend:test \
+            -f Dockerfile \
+            .
+          
+          echo "✅ Docker image built successfully"
+          
+          # Verificar tamaño de la imagen
+          docker images gpuchile-frontend:test
+      
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 4: KIND CLUSTER SETUP
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: ☸️ Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+      
+      - name: 🔧 Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl version --client
+      
+      - name: ☸️ Create Kind Cluster
+        run: |
+          cat <<EOF | kind create cluster --name gpuchile-frontend --config=-
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            - containerPort: 30080
+              hostPort: 3000
+              protocol: TCP
+          networking:
+            apiServerAddress: "0.0.0.0"
+            apiServerPort: 6443
+          EOF
+          
+          echo "✅ Kind cluster created"
+      
+      - name: 🔧 Configure kubectl for Kind
+        run: |
+          mkdir -p $HOME/.kube
+          kind export kubeconfig --name gpuchile-frontend --kubeconfig $HOME/.kube/config
+          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+          
+          echo "===== Cluster Info ====="
+          kubectl cluster-info --context kind-gpuchile-frontend
+          
+          echo "===== Nodes ====="
+          kubectl get nodes -o wide
+          
+          echo "⏳ Waiting for nodes to be ready..."
+          kubectl wait --for=condition=Ready nodes --all --timeout=60s
+          
+          echo "✅ kubectl configured successfully!"
+      
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 5: LOAD IMAGE & DEPLOY
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: 📤 Load Image to Kind
+        run: |
+          kind load docker-image gpuchile-frontend:test --name gpuchile-frontend
+          echo "✅ Image loaded into Kind cluster"
+          
+          # Verificar que la imagen está en el nodo
+          docker exec gpuchile-frontend-control-plane crictl images | grep gpuchile-frontend || echo "Image verification skipped"
+      
+      - name: 📋 Create ConfigMap for Environment Variables
+        run: |
+          kubectl create configmap frontend-config \
+            --from-literal=VITE_API_URL=http://backend-service:8000/api
+          
+          kubectl get configmap frontend-config -o yaml
+      
+      - name: 🚀 Deploy Frontend to Kind
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: gpuchile-frontend
+            labels:
+              app: frontend
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: frontend
+            template:
+              metadata:
+                labels:
+                  app: frontend
+              spec:
+                containers:
+                - name: frontend
+                  image: gpuchile-frontend:test
+                  imagePullPolicy: Never
+                  ports:
+                  - containerPort: 80
+                  resources:
+                    limits:
+                      cpu: "200m"
+                      memory: "128Mi"
+                    requests:
+                      cpu: "100m"
+                      memory: "64Mi"
+                  livenessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 10
+                    periodSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 5
+                    periodSeconds: 5
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: frontend-service
+          spec:
+            type: NodePort
+            selector:
+              app: frontend
+            ports:
+            - port: 80
+              targetPort: 80
+              nodePort: 30080
+          EOF
+          
+          echo "✅ Manifests applied"
+      
+      - name: ⏳ Wait for Deployment
+        run: |
+          echo "⏳ Waiting for deployment to be ready..."
+          kubectl wait --for=condition=available --timeout=120s deployment/gpuchile-frontend
+          
+          echo "===== Pods Status ====="
+          kubectl get pods -o wide
+          
+          echo "===== Service Status ====="
+          kubectl get svc frontend-service
+      
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 6: HEALTH CHECKS
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: 🧪 Run Health Checks
+        run: |
+          # Port forward en background
+          kubectl port-forward service/frontend-service 3000:80 &
+          PF_PID=$!
+          
+          # Esperar a que el port forward esté listo
+          sleep 10
+          
+          echo "===== Testing HTTP endpoint ====="
+          HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://localhost:3000/)
+          echo "HTTP Status Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Health check failed with status code: $HTTP_CODE"
+            kill $PF_PID || true
+            exit 1
+          fi
+          
+          echo "===== Testing index.html content ====="
+          RESPONSE=$(curl -s http://localhost:3000/)
+          
+          if echo "$RESPONSE" | grep -q "<!doctype html>"; then
+            echo "✅ index.html served correctly"
+          else
+            echo "❌ Invalid HTML response"
+            echo "$RESPONSE"
+            kill $PF_PID || true
+            exit 1
+          fi
+          
+          if echo "$RESPONSE" | grep -q "root"; then
+            echo "✅ React root div found"
+          else
+            echo "⚠️ React root div not found (may be OK depending on your HTML)"
+          fi
+          
+          echo "✅ All health checks passed!"
+          
+          # Kill port forward
+          kill $PF_PID || true
+      
+      - name: 🔍 Test Static Assets
+        run: |
+          kubectl port-forward service/frontend-service 3000:80 &
+          PF_PID=$!
+          sleep 5
+          
+          echo "===== Testing CSS/JS loading ====="
+          # Intentar obtener assets (esto puede fallar si no hay assets, pero no bloqueamos)
+          curl -s http://localhost:3000/assets/ | head -n 20 || echo "⚠️ No assets index (expected)"
+          
+          kill $PF_PID || true
+      
+      # ═══════════════════════════════════════════════════════════════════
+      # FASE 7: LOGS & CLEANUP
+      # ═══════════════════════════════════════════════════════════════════
+      
+      - name: 📊 Show Logs on Failure
+        if: failure()
+        run: |
+          echo "===== FRONTEND PODS ====="
+          kubectl get pods
+          
+          echo "===== FRONTEND LOGS ====="
+          kubectl logs -l app=frontend --tail=100 || echo "No logs available"
+          
+          echo "===== POD DESCRIBE ====="
+          kubectl describe pods -l app=frontend || echo "No pods to describe"
+          
+          echo "===== NGINX ERROR LOGS (if accessible) ====="
+          kubectl exec -it $(kubectl get pod -l app=frontend -o jsonpath='{.items[0].metadata.name}') -- cat /var/log/nginx/error.log 2>/dev/null || echo "Error logs not accessible"
+      
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up..."
+          kind delete cluster --name gpuchile-frontend || true
+          echo "✅ Cleanup complete"
