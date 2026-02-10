@@ -1,24 +1,18 @@
 """
-Configuración centralizada con soporte para LocalStack
+Production-grade configuration for EKS with IRSA
 """
 import os
 from functools import lru_cache
-from typing import Optional
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Settings con detección automática de LocalStack"""
+    """Settings optimized for IRSA (IAM Roles for Service Accounts)"""
     
     # ===== AWS Configuration =====
+    # Solo región y bucket - IRSA maneja credenciales automáticamente
     AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
-    S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "gpuchile-dev")
-    AWS_ACCESS_KEY_ID: Optional[str] = os.getenv("AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY: Optional[str] = os.getenv("AWS_SECRET_ACCESS_KEY")
-    
-    # ===== LocalStack Detection =====
-    USE_LOCALSTACK: bool = os.getenv("USE_LOCALSTACK", "false").lower() == "true"
-    LOCALSTACK_ENDPOINT: str = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
+    S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "gpuchile-images-dev-nicolas-2026")
     
     # ===== Database =====
     DATABASE_URL: str = os.getenv(
@@ -38,19 +32,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # ===== Environment =====
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    
-    @property
-    def is_local(self) -> bool:
-        """Detecta si estamos en modo local (LocalStack o Docker Compose)"""
-        return self.USE_LOCALSTACK or self.ENVIRONMENT == "development"
-    
-    @property
-    def aws_endpoint_url(self) -> Optional[str]:
-        """Retorna el endpoint de AWS solo si usamos LocalStack"""
-        if self.USE_LOCALSTACK:
-            return self.LOCALSTACK_ENDPOINT
-        return None
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
     
     class Config:
         case_sensitive = True
