@@ -45,7 +45,7 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "postgres" {
   identifier     = "gpuchile-db-${var.environment}"
   engine         = "postgres"
-  engine_version = "16.3"
+  engine_version = "15.3"
   instance_class = var.instance_class
 
   allocated_storage     = var.allocated_storage
@@ -62,13 +62,15 @@ resource "aws_db_instance" "postgres" {
   multi_az                = false
   publicly_accessible     = false
   skip_final_snapshot     = true # Para dev/portfolio (En prod: false)
-  backup_retention_period = 7
+  backup_retention_period = 1
+  deletion_protection     = false
 
   tags = {
     Name        = "gpuchile-postgres"
     Environment = var.environment
   }
 }
+
 
 # Guardar credenciales en AWS Secrets Manager (para External Secrets Operator)
 resource "aws_secretsmanager_secret" "db_credentials" {
