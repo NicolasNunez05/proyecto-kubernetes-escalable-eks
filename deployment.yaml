@@ -4,7 +4,7 @@ metadata:
   annotations:
     deployment.kubernetes.io/revision: "3"
     kubectl.kubernetes.io/last-applied-configuration: |
-      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"backend"},"name":"gpuchile-backend","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"backend"}},"template":{"metadata":{"labels":{"app":"backend"}},"spec":{"containers":[{"env":[{"name":"AWS_REGION","value":"us-east-1"},{"name":"S3_BUCKET_NAME","value":"gpuchile-images-dev-nicolas-2026"},{"name":"REDIS_URL","value":"redis://redis-service.default.svc.cluster.local:6379/0"}],"envFrom":[{"secretRef":{"name":"db-credentials"}}],"image":"380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest","imagePullPolicy":"Always","name":"backend","ports":[{"containerPort":8000}],"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"250m","memory":"256Mi"}}}],"serviceAccountName":"gpuchile-backend-sa"}}}}
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"backend"},"name":"gpuchile-backend","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"backend"}},"template":{"metadata":{"labels":{"app":"backend"}},"spec":{"containers":[{"env":[{"name":"AWS_REGION","value":"us-east-1"},{"name":"S3_BUCKET_NAME","value":"gpuchile-images-dev-nicolas-2026"},{"name":"REDIS_URL","value":"redis://redis-service.default.svc.cluster.local:6379/0"}],"envFrom":[{"secretRef":{"name":"db-credentials"}}],"image":"592451843842.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest","imagePullPolicy":"Always","name":"backend","ports":[{"containerPort":8000}],"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"250m","memory":"256Mi"}}}],"serviceAccountName":"gpuchile-backend-sa"}}}}
   creationTimestamp: "2026-02-06T15:37:14Z"
   generation: 3
   labels:
@@ -44,7 +44,7 @@ spec:
         envFrom:
         - secretRef:
             name: db-credentials
-        image: 380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest
+        image: 592451843842.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:latest
         imagePullPolicy: Always
         name: backend
         ports:

@@ -1,0 +1,216 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# LocalStack - AWS Local Simulator para Kind
+# ═══════════════════════════════════════════════════════════════════════════
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: localstack
+  labels:
+    name: localstack
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: localstack-init
+  namespace: localstack
+data:
+  init-s3.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "🚀 Initializing LocalStack S3..."
+    
+    # Esperar a que LocalStack esté listo
+    echo "⏳ Waiting for LocalStack to be ready..."
+    until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\": \"available\""; do
+      echo "Waiting for S3 service..."
+      sleep 2
+    done
+    
+    echo "✅ LocalStack is ready!"
+    
+    # Configurar AWS CLI para usar LocalStack
+    export AWS_ACCESS_KEY_ID=test
+    export AWS_SECRET_ACCESS_KEY=test
+    export AWS_DEFAULT_REGION=us-east-1
+    
+    # Crear bucket
+    echo "📦 Creating S3 bucket: gpuchile-media"
+    aws --endpoint-url=http://localhost:4566 s3 mb s3://gpuchile-media || echo "Bucket already exists"
+    
+    # Configurar bucket como público (para testing)
+    aws --endpoint-url=http://localhost:4566 s3api put-bucket-acl \
+      --bucket gpuchile-media \
+      --acl public-read || echo "ACL already set"
+    
+    # Listar buckets
+    echo "📋 Available buckets:"
+    aws --endpoint-url=http://localhost:4566 s3 ls
+    
+    echo "✅ S3 initialization complete!"
+    
+    # Mantener el contenedor vivo
+    tail -f /dev/null
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  namespace: localstack
+  labels:
+    app: localstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      containers:
+      # ═════════════════════════════════════════════════════════════════
+      # Container 1: LocalStack Main Service
+      # ═════════════════════════════════════════════════════════════════
+      - name: localstack
+        image: localstack/localstack:3.0
+        ports:
+        - name: edge
+          containerPort: 4566
+          protocol: TCP
+        env:
+        - name: SERVICES
+          value: "s3,secretsmanager"
+        - name: DEBUG
+          value: "1"
+        - name: DATA_DIR
+          value: "/tmp/localstack/data"
+        - name: DOCKER_HOST
+          value: "unix:///var/run/docker.sock"
+        - name: LOCALSTACK_HOST
+          value: "localhost.localstack.cloud"
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /_localstack/health
+            port: 4566
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /_localstack/health
+            port: 4566
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      # ═════════════════════════════════════════════════════════════════
+      # Container 2: S3 Initializer (Sidecar)
+      # ═════════════════════════════════════════════════════════════════
+      - name: s3-initializer
+        image: amazon/aws-cli:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Esperar a que LocalStack esté listo
+          echo "⏳ Waiting for LocalStack..."
+          until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\": \"available\""; do
+            sleep 2
+          done
+          
+          echo "✅ LocalStack ready!"
+          
+          # Configurar AWS CLI
+          export AWS_ACCESS_KEY_ID=test
+          export AWS_SECRET_ACCESS_KEY=test
+          export AWS_DEFAULT_REGION=us-east-1
+          
+          # Crear bucket
+          echo "📦 Creating bucket gpuchile-media..."
+          aws --endpoint-url=http://localhost:4566 s3 mb s3://gpuchile-media 2>/dev/null || echo "Bucket exists"
+          
+          # Configurar CORS
+          cat > /tmp/cors.json <<EOF
+          {
+            "CORSRules": [
+              {
+                "AllowedOrigins": ["*"],
+                "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+                "AllowedHeaders": ["*"],
+                "MaxAgeSeconds": 3000
+              }
+            ]
+          }
+          EOF
+          
+          aws --endpoint-url=http://localhost:4566 s3api put-bucket-cors \
+            --bucket gpuchile-media \
+            --cors-configuration file:///tmp/cors.json || echo "CORS already set"
+          
+          # Listar buckets
+          echo "📋 Buckets:"
+          aws --endpoint-url=http://localhost:4566 s3 ls
+          
+          echo "✅ Initialization complete!"
+          
+          # Keep alive
+          tail -f /dev/null
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+  namespace: localstack
+  labels:
+    app: localstack
+spec:
+  type: ClusterIP
+  selector:
+    app: localstack
+  ports:
+  - name: edge
+    port: 4566
+    targetPort: 4566
+    protocol: TCP
+
+---
+# Service adicional para acceso desde el host (opcional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack-external
+  namespace: localstack
+  labels:
+    app: localstack
+spec:
+  type: NodePort
+  selector:
+    app: localstack
+  ports:
+  - name: edge
+    port: 4566
+    targetPort: 4566
+    nodePort: 31566  # Accesible desde http://localhost:31566
+    protocol: TCP

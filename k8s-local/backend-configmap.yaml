@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: default
+data:
+  # LocalStack Configuration
+  USE_LOCALSTACK: "true"
+  LOCALSTACK_ENDPOINT: "http://localstack.localstack.svc.cluster.local:4566"
+  
+  # AWS Configuration
+  AWS_REGION: "us-east-1"
+  S3_BUCKET_NAME: "gpuchile-media"
+  AWS_ACCESS_KEY_ID: "test"
+  AWS_SECRET_ACCESS_KEY: "test"
+  
+  # Database (si usas PostgreSQL local)
+  DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/gpuchile"
+  
+  # Redis (si usas Redis local)
+  REDIS_URL: "redis://redis:6379/0"
+  
+  # Environment
+  ENVIRONMENT: "local"

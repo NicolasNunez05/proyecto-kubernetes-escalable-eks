@@ -49,8 +49,8 @@ resource "helm_release" "kube_prometheus_stack" {
   chart            = "kube-prometheus-stack"
   namespace        = var.namespace
   create_namespace = true
-  timeout = 900   # 900 segundos = 15 minutos
-  wait    = true
+  timeout          = 900 # 900 segundos = 15 minutos
+  wait             = true
 
   # ⚠️ AQUÍ ESTÁ EL CAMBIO MÁGICO
   # En lugar de usar 'set {}', usamos 'values' con YAML.

@@ -21,8 +21,6 @@ terraform {
       version = ">= 2.11"
     }
   }
-
-  # ❌ ELIMINADO: El backend "s3" ya está en backend.tf
 }
 
 provider "aws" {
@@ -37,15 +35,12 @@ provider "aws" {
   }
 }
 
-# Provider Kubernetes
-# 🛠️ CORREGIDO PARA WINDOWS
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  
+
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
-    # 👇 RUTA ABSOLUTA A AWS CLI (Esto no puede fallar)
     command     = "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe"
     args = [
       "eks",
@@ -56,16 +51,13 @@ provider "kubernetes" {
   }
 }
 
-# Provider Helm
-# 🛠️ CORREGIDO: Apuntando directo al ejecutable de AWS
 provider "helm" {
   kubernetes {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-    
+
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
-      # 👇 LO MISMO AQUÍ
       command     = "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe"
       args = [
         "eks",
@@ -90,12 +82,10 @@ module "vpc" {
 module "eks" {
   source = "./modules/eks"
 
-  cluster_name = var.cluster_name
-  vpc_id       = module.vpc.vpc_id
-  subnet_ids   = module.vpc.public_subnets
-  environment  = var.environment
-
- 
+  cluster_name    = var.cluster_name
+  vpc_id          = module.vpc.vpc_id
+  subnet_ids      = module.vpc.public_subnets
+  environment     = var.environment
   cluster_version = "1.31"
 }
 
@@ -121,19 +111,19 @@ module "s3" {
 module "lambda" {
   source = "./modules/lambda"
 
-  environment      = var.environment
-  s3_bucket_name   = module.s3.bucket_name
-  s3_bucket_arn    = module.s3.bucket_arn
+  environment    = var.environment
+  s3_bucket_name = module.s3.bucket_name
+  s3_bucket_arn  = module.s3.bucket_arn
 }
 
-# 6. Secretos Adicionales (JWT, Redis)
+# 6. Secrets Manager
 module "secrets" {
   source = "./modules/secrets"
 
   environment = var.environment
 }
 
-# 7. IRSA Role para el Backend
+# 7. IRSA Role para Backend
 module "backend_irsa" {
   source = "./modules/irsa"
 
@@ -142,7 +132,7 @@ module "backend_irsa" {
   namespace            = "default"
   service_account_name = "gpuchile-backend-sa"
   s3_bucket_arn        = module.s3.bucket_arn
-  
+
   secrets_arns = [
     module.rds.db_secret_arn,
     module.secrets.jwt_secret_arn,
@@ -150,36 +140,49 @@ module "backend_irsa" {
   ]
 }
 
-# 8. ECR (Comentado porque ya existe)
-# module "ecr" { ... }
-
-# 9. Monitoring
-#module "monitoring" {
-#  source = "./modules/monitoring"
-
-#  cluster_name      = module.eks.cluster_name
-#  oidc_provider_arn = module.eks.oidc_provider_arn
-#  namespace         = "monitoring"
+# 9. Monitoring (Prometheus + Grafana) - ITERACIÓN 4
+module "monitoring" {
+  source            = "./modules/monitoring"
+  cluster_name      = var.cluster_name
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  namespace         = "monitoring"
   
-#  depends_on = [ module.eks ]
-#}
+  depends_on = [module.eks]
+}
 
-# 10. Helm Controllers (Comentado temporalmente para fase 1, o descoméntalo si Monitoring funciona)
-
+# 10. Helm Controllers (External Secrets + AWS LB Controller)
 module "helm_controllers" {
   source = "./modules/helm-controllers"
 
-  cluster_name      = module.eks.cluster_name 
+  cluster_name      = module.eks.cluster_name
   aws_region        = var.region
   vpc_id            = module.vpc.vpc_id
   oidc_provider_arn = module.eks.oidc_provider_arn
-  
+
   tags = {
     Environment = var.environment
     Project     = "GpuChile"
   }
 
-  depends_on = [
-    module.eks
-  ]
+  depends_on = [module.eks]
+}
+
+# 11. Autoscaling (HPA + Cluster Autoscaler) - ITERACIÓN 5
+module "autoscaling" {
+  source            = "./modules/autoscaling"
+  cluster_name      = var.cluster_name
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  aws_region        = var.region
+  
+  depends_on = [module.eks]
+}
+
+# 12. Logging (Fluent Bit + CloudWatch) - ITERACIÓN 7
+module "logging" {
+  source            = "./modules/logging"
+  cluster_name      = var.cluster_name
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  aws_region        = var.region
+  
+  depends_on = [module.eks]
 }

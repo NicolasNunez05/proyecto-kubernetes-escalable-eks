@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: gpuchile_localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,secretsmanager
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+    volumes:
+      - "./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init.sh"
+      - localstack_data:/tmp/localstack
+    networks:
+      - gpuchile_network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: gpuchile_postgres_local
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: gpuchile
+    ports:
+      - "5432:5432"
+    networks:
+      - gpuchile_network
+
+  backend:
+    build:
+      context: ./apps/backend
+    container_name: gpuchile_backend_local
+    environment:
+      USE_LOCALSTACK: "true"
+      LOCALSTACK_ENDPOINT: "http://localstack:4566"
+      AWS_REGION: "us-east-1"
+      S3_BUCKET_NAME: "gpuchile-dev"
+      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/gpuchile"
+      SECRET_KEY: "dev-secret-key"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - localstack
+      - postgres
+    networks:
+      - gpuchile_network
+
+networks:
+  gpuchile_network:
+    driver: bridge
+
+volumes:
+  localstack_data:

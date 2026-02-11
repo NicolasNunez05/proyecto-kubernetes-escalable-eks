@@ -5,7 +5,7 @@
 replicaCount: 1  # HPA controlará esto
 
 image:
-  repository: 380002980493.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend
+  repository: 592451843842.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend
   pullPolicy: IfNotPresent
   tag: "latest"
 

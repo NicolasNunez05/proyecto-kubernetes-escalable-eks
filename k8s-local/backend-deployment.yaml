@@ -1,97 +1,69 @@
-# ═══════════════════════════════════════════════════════════════════════════
-# GpuChile Frontend - Kubernetes Deployment for Kind
-# ═══════════════════════════════════════════════════════════════════════════
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: frontend-config
-  namespace: default
-data:
-  VITE_API_URL: "http://backend-service:8000/api"
-  NGINX_WORKER_PROCESSES: "2"
-  NGINX_WORKER_CONNECTIONS: "1024"
-
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gpuchile-frontend
+  name: gpuchile-backend
   namespace: default
   labels:
-    app: frontend
-    component: web
+    app: backend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: frontend
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      app: backend
   template:
     metadata:
       labels:
-        app: frontend
-        component: web
+        app: backend
     spec:
       containers:
-      - name: frontend
-        image: gpuchile-frontend:test
-        imagePullPolicy: Never  # 🔥 CRÍTICO para Kind
+      - name: backend
+        image: gpuchile-backend:local  # Se reemplaza por el script
+        imagePullPolicy: Never
         ports:
-        - name: http
-          containerPort: 80
-          protocol: TCP
+        - containerPort: 8000
         
-        # ═══════════════════════════════════════════════════════════════════
-        # Resource Limits (Frontend es ligero)
-        # ═══════════════════════════════════════════════════════════════════
+        # ═══════════════════════════════════════════════════════════════
+        # Environment Variables desde ConfigMap y Secrets
+        # ═══════════════════════════════════════════════════════════════
+        envFrom:
+        - configMapRef:
+            name: backend-config
+        - secretRef:
+            name: db-credentials
+        
         resources:
           limits:
-            cpu: "200m"
-            memory: "128Mi"
+            cpu: "500m"
+            memory: "512Mi"
           requests:
-            cpu: "100m"
-            memory: "64Mi"
+            cpu: "250m"
+            memory: "256Mi"
         
-        # ═══════════════════════════════════════════════════════════════════
-        # Health Checks
-        # ═══════════════════════════════════════════════════════════════════
         livenessProbe:
           httpGet:
             path: /health
-            port: 80
-            scheme: HTTP
-          initialDelaySeconds: 10
+            port: 8000
+          initialDelaySeconds: 30
           periodSeconds: 10
-          timeoutSeconds: 3
-          successThreshold: 1
-          failureThreshold: 3
         
         readinessProbe:
           httpGet:
-            path: /
-            port: 80
-            scheme: HTTP
-          initialDelaySeconds: 5
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
           periodSeconds: 5
-          timeoutSeconds: 2
-          successThreshold: 1
-          failureThreshold: 3
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # Environment Variables (si se necesitan en runtime)
-        # ═══════════════════════════════════════════════════════════════════
-        envFrom:
-        - configMapRef:
-            name: frontend-config
-            optional: true
 
-      # ═══════════════════════════════════════════════════════════════════
-      # Pod Settings
-      # ═══════════════════════════════════════════════════════════════════
-      restartPolicy: Always
-      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30000

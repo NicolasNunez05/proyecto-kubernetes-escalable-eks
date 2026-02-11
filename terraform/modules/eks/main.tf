@@ -2,10 +2,10 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 19.0"
 
-  cluster_name    = var.cluster_name
-  
+  cluster_name = var.cluster_name
+
   # 👇 ¡ESTO ES LO QUE TE SALVA LA BILLETERA! 👇
-  cluster_version = "1.31" 
+  cluster_version = "1.31"
   # 👆 Forzamos la versión 1.31 (Estándar, $0.10/hora)
 
   # 🌐 RED: Cluster público
