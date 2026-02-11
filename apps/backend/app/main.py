@@ -4,6 +4,7 @@ from fastapi.responses import Response
 from prometheus_client import Counter, Histogram, generate_latest
 from sqlalchemy import text
 from datetime import datetime
+from pydantic import BaseModel
 import time
 import logging
 
@@ -11,6 +12,7 @@ from app.core.config import settings
 from app.db.database import engine, Base, SessionLocal
 from app.api.routes import gpus, auth, cart
 from app.api.routes.cart import redis_client
+from app.services.ai_service import ai_service  # ⬅️ NUEVO
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -35,8 +37,8 @@ def create_tables_with_retry(max_retries=3, delay=2):
 # Inicializar FastAPI
 app = FastAPI(
     title="GpuChile API",
-    description="Production-grade GPU e-commerce API with EKS architecture",
-    version="1.0.0",
+    description="Production-grade GPU e-commerce API with EKS architecture + AI",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -95,19 +97,40 @@ async def track_metrics(request: Request, call_next):
 
     return response
 
-# Rutas
+# Rutas existentes
 app.include_router(gpus.router, prefix="/api/gpus", tags=["GPUs"])
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(cart.router, prefix="/api/cart", tags=["Cart"])
+
+# ===== NUEVO: AI ENDPOINT =====
+class QuestionRequest(BaseModel):
+    query: str
+
+@app.post("/api/v1/ask-ai", tags=["AI"])
+async def ask_ai(request: QuestionRequest):
+    """
+    Endpoint de IA con RAG (Retrieval-Augmented Generation)
+    Usa pgvector para búsqueda semántica + Groq (Llama-3)
+    """
+    if not ai_service.is_available():
+        return {
+            "error": "AI service not configured",
+            "message": "Please set GROQ_API_KEY and ensure database has pgvector extension"
+        }
+    
+    response = ai_service.ask_agent(request.query)
+    return response
+
 
 # System Endpoints
 @app.get("/")
 def root():
     return {
         "message": "Welcome to GpuChile API 🚀",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "docs": "/docs",
         "environment": settings.ENVIRONMENT,
+        "ai_enabled": ai_service.is_available()
     }
 
 @app.get("/health", tags=["System"])
@@ -134,7 +157,11 @@ def health_check():
 
     return {
         "status": "ok" if status_code == 200 else "error",
-        "services": {"database": db_status, "redis": redis_status},
+        "services": {
+            "database": db_status,
+            "redis": redis_status,
+            "ai": "enabled" if ai_service.is_available() else "disabled"
+        },
         "timestamp": datetime.utcnow().isoformat(),
     }
 

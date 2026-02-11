@@ -13,6 +13,7 @@ requests==2.31.0
 redis==5.0.1
 prometheus-client==0.19.0
 email-validator>=2.1.0
+
 # --- Testing & Security ---
 pytest>=7.4.3
 pytest-asyncio>=0.21.1
@@ -24,3 +25,11 @@ black>=23.12.1
 isort>=5.13.2
 bandit>=1.7.5
 safety>=3.0.0
+
+# --- AI Module + RAG ---
+langchain==0.1.6
+langchain-groq==0.0.1
+agentops==0.2.5
+python-dotenv==1.0.0
+pgvector==0.2.4
+sentence-transformers==2.3.1
