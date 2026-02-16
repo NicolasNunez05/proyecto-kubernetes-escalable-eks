@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-from-frontend-only
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: gpuchile-backend
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: gpuchile-frontend
+    ports:
+    - port: 8000
