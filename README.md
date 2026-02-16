@@ -73,8 +73,7 @@ ip-10-0-1-127.ec2.internal    Ready    <none>   3d1h   v1.29.15-eks-ecaa3a6  10.
 ip-10-0-1-64.ec2.internal     Ready    <none>   3h57m  v1.29.15-eks-ecaa3a6  10.0.1.64      Amazon Linux 2
 ip-10-0-2-168.ec2.internal    Ready    <none>   43m    v1.29.15-eks-ecaa3a6  10.0.2.168     Amazon Linux 2
 ip-10-0-2-205.ec2.internal    Ready    <none>   3d1h   v1.29.15-eks-ecaa3a6  10.0.2.205     Amazon Linux 2
-
-
+```
 Los nodos se distribuyen entre subnets privadas de diferentes AZs (us-east-1a, us-east-1b), garantizando tolerancia a fallos zonales.
 
 Kubernetes Nodes
@@ -219,7 +218,6 @@ El workflow incluye smoke tests que verifican disponibilidad de endpoints críti
 Infrastructure as Code
 Estructura Modular de Terraform
 El proyecto implementa separación de responsabilidades mediante módulos reutilizables:
-
 terraform/
 ├── 1-infrastructure/       # Capa base (VPC, EKS, RDS, S3)
 │   └── modules/
@@ -236,8 +234,6 @@ terraform/
 └── environments/
     ├── dev/
     └── prod/
-
-Terraform Structure
 
 State Management
 Terraform gestiona 85+ recursos distribuidos entre servicios de AWS y configuraciones de Kubernetes:
@@ -258,7 +254,6 @@ $ aws rds describe-db-instances --query "DBInstances.{DB:DBInstanceIdentifier,En
 RDS Validation
 
 S3 Bucket para almacenamiento de imágenes:
-
 $ aws s3 ls | Select-String "gpuchile-images"
 2026-02-12 19:58:09 gpuchile-images-dev-592451843842
 
@@ -396,7 +391,6 @@ kubectl >= 1.28
 Helm >= 3.12
 
 Docker (opcional, para builds locales)
-
 Paso 1: Provisionar Infraestructura
 
 cd terraform/1-infrastructure
@@ -405,7 +399,6 @@ terraform plan -out=plan.tfplan
 terraform apply plan.tfplan
 
 Tiempo estimado: 15-20 minutos (creación de EKS Control Plane es el cuello de botella)
-
 Paso 2: Configurar kubectl
 
 aws eks update-kubeconfig --name gpuchile-cluster --region us-east-1
@@ -418,14 +411,10 @@ terraform init
 terraform apply
 
 Esto despliega:
-
-AWS Load Balancer Controller
-
-External Secrets Operator
-
-Prometheus Operator
-
-Metrics Server
+-AWS Load Balancer Controller
+-External Secrets Operator
+-Prometheus Operator
+-Metrics Server
 
 Paso 4: Desplegar Aplicaciones
 
@@ -439,13 +428,10 @@ helm install gpuchile-backend ../../helm/backend --namespace default
 helm install gpuchile-frontend ../../helm/frontend --namespace default
 
 Paso 5: Obtener URL de Acceso
-
 kubectl get svc gpuchile-frontend -n default -o jsonpath='{.status.loadBalancer.ingress.hostname}'
-
 La aplicación estará disponible en el hostname del Load Balancer (ejemplo: a8f3d21...elb.amazonaws.com).
 
 Verificación
-
 # Health del backend
 curl http://<backend-lb-url>/health
 
@@ -499,11 +485,13 @@ Santiago, Chile
 
 GitHub: @NicolasNunez05
 
-LinkedIn: https://www.linkedin.com/in/nicol%C3%A1s-n%C3%BA%C3%B1ez-%C3%A1lvarez-35ba661ba/
+LinkedIn: nicolas-nunez-alvarez
 
 Email: nicolasnunezalvarez05@gmail.com
 
-
 Licencia
 Este proyecto está bajo licencia MIT. Ver archivo LICENSE para detalles.
+
+
+
 
