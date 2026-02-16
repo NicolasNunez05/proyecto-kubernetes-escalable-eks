@@ -5,7 +5,8 @@ FROM python:3.11-slim AS base
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HOME=/home/appuser
 
 WORKDIR /app
 
@@ -21,11 +22,21 @@ COPY requirements.txt .
 # Instalar dependencias Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código fuente
+# --- FIX: Crear usuario no-root (ID 1000) ---
+# Creamos el usuario y su home para que torch pueda escribir caché
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser \
+    && mkdir -p /home/appuser/.cache \
+    && chown -R appuser:appuser /home/appuser
+
+# Copiar código fuente y dar permisos al usuario
 COPY . .
+RUN chown -R appuser:appuser /app
+
+# Usar el usuario creado
+USER 1000
 
 # Exponer puerto
 EXPOSE 8000
 
-# Script de inicio (espera DB + corre migraciones + inicia server)
+# Script de inicio
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
