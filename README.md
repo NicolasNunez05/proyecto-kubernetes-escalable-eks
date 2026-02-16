@@ -74,150 +74,157 @@ ip-10-0-1-64.ec2.internal     Ready    <none>   3h57m  v1.29.15-eks-ecaa3a6  10.
 ip-10-0-2-168.ec2.internal    Ready    <none>   43m    v1.29.15-eks-ecaa3a6  10.0.2.168     Amazon Linux 2
 ip-10-0-2-205.ec2.internal    Ready    <none>   3d1h   v1.29.15-eks-ecaa3a6  10.0.2.205     Amazon Linux 2
 ```
+
 Los nodos se distribuyen entre subnets privadas de diferentes AZs (us-east-1a, us-east-1b), garantizando tolerancia a fallos zonales.
 
-Kubernetes Nodes
+![Kubernetes Nodes](./docs/images/k8s-nodes-multiaz.png)
 
-Mecanismo de Self-Healing
+### Mecanismo de Self-Healing
+
 El sistema implementa recuperación automática mediante el ciclo de reconciliación nativo de Kubernetes:
 
-Detección: El Kubelet detecta fallo del contenedor (ej: OOMKilled, CrashLoopBackOff)
+1. **Detección**: El Kubelet detecta fallo del contenedor (ej: OOMKilled, CrashLoopBackOff)
+2. **Aislamiento**: El pod se marca como `NotReady` y el Service deja de enrutar tráfico inmediatamente
+3. **Recuperación**: El ReplicaSet detecta discrepancia entre estado actual (1/2 pods) y deseado (2/2) y crea pod de reemplazo
+4. **Restauración**: El nuevo pod pasa health checks (`/health`, `/readyz`) y se reintegra al balanceo de carga
 
-Aislamiento: El pod se marca como NotReady y el Service deja de enrutar tráfico inmediatamente
+**Resultado**: Zero downtime para usuarios finales con recuperación en milisegundos sin intervención manual.
 
-Recuperación: El ReplicaSet detecta discrepancia entre estado actual (1/2 pods) y deseado (2/2) y crea pod de reemplazo
+---
 
-Restauración: El nuevo pod pasa health checks (/health, /readyz) y se reintegra al balanceo de carga
+## Integración IA/ML: RAG con Llama-3 y pgvector
 
-Resultado: Zero downtime para usuarios finales con recuperación en milisegundos sin intervención manual.
+### Gateway Inteligente con LLM
 
-Integración IA/ML: RAG con Llama-3 y pgvector
-Gateway Inteligente con LLM
-El sistema expone un endpoint /api/v1/ask-ai que actúa como gateway para consultas en lenguaje natural. La implementación orquesta llamadas a la API de Groq Cloud utilizando el modelo llama-3.3-70b-versatile, optimizado para baja latencia en inferencia.
+El sistema expone un endpoint `/api/v1/ask-ai` que actúa como gateway para consultas en lenguaje natural. La implementación orquesta llamadas a la API de Groq Cloud utilizando el modelo `llama-3.3-70b-versatile`, optimizado para baja latencia en inferencia.
 
-AI Gateway Llama-3
+![AI Gateway Llama-3](./docs/images/ai-gateway-llama3.png)
 
-Flujo de procesamiento:
+**Flujo de procesamiento**:
+1. El usuario envía query conversacional ("GPU para 4K gaming bajo $1000")
+2. El backend genera embeddings del query usando SentenceTransformers
+3. Se ejecuta búsqueda de similitud coseno en PostgreSQL mediante operador `<=>` de pgvector
+4. Los productos recuperados se inyectan como contexto al prompt de Llama-3
+5. El LLM genera respuesta personalizada con recomendaciones técnicas
 
-El usuario envía query conversacional ("GPU para 4K gaming bajo $1000")
+### Búsqueda Semántica con pgvector
 
-El backend genera embeddings del query usando SentenceTransformers
-
-Se ejecuta búsqueda de similitud coseno en PostgreSQL mediante operador <=> de pgvector
-
-Los productos recuperados se inyectan como contexto al prompt de Llama-3
-
-El LLM genera respuesta personalizada con recomendaciones técnicas
-
-Búsqueda Semántica con pgvector
 La extensión pgvector v0.8.0 habilita almacenamiento de vectores de alta dimensión (768D) en la misma tabla que datos estructurados, eliminando la necesidad de bases de datos vectoriales especializadas.
 
-Persistencia Hibrida RDS
+![Persistencia Hibrida RDS](./docs/images/persistencia-hibrida-rds.png)
 
-Ventajas técnicas:
+**Ventajas técnicas**:
+- **Indexación HNSW**: Algoritmo de grafos que permite búsquedas ANN (Approximate Nearest Neighbors) con latencia de milisegundos, superando a índices IVFFlat tradicionales
+- **Escalabilidad**: Preparado para millones de vectores sin degradación de rendimiento
+- **Transaccionalidad**: Embeddings y datos relacionales en mismo transaction scope (ACID compliant)
 
-Indexación HNSW: Algoritmo de grafos que permite búsquedas ANN (Approximate Nearest Neighbors) con latencia de milisegundos, superando a índices IVFFlat tradicionales
+![Motor Vectorial pgvector](./docs/images/pgvector-extension.png)
 
-Escalabilidad: Preparado para millones de vectores sin degradación de rendimiento
+### Graceful Fallback y UX Conversacional
 
-Transaccionalidad: Embeddings y datos relacionales en mismo transaction scope (ACID compliant)
-
-Motor Vectorial pgvector
-
-Graceful Fallback y UX Conversacional
 El sistema implementa intent detection y fallback inteligente. Cuando el motor RAG no encuentra productos que coincidan con el presupuesto del usuario, el LLM utiliza su conocimiento pre-entrenado para recomendar hardware estándar del mercado y sugerir explorar el catálogo completo.
 
-Query Semantica AI Reasoning
+![Query Semantica AI Reasoning](./docs/images/query-semantica-fallback.png)
 
-Observabilidad: El campo "observability": "tracked_by_agentops" confirma monitoreo de prompts, métricas de tokens y análisis de costos para auditoría.
+**Observabilidad**: El campo `"observability": "tracked_by_agentops"` confirma monitoreo de prompts, métricas de tokens y análisis de costos para auditoría.
 
-Security & Secrets Management
-IRSA (IAM Roles for Service Accounts)
+---
+
+## Security & Secrets Management
+
+### IRSA (IAM Roles for Service Accounts)
+
 Los pods de backend obtienen permisos de AWS sin credenciales estáticas mediante AssumeRoleWithWebIdentity. El ServiceAccount tiene anotación con ARN del rol IAM, y el OIDC Provider de EKS valida tokens JWT para emitir credenciales temporales.
 
-Security Secrets Flow
+![Security Secrets Flow](./docs/images/Security-Secrets-Flow.jpg)
 
-Ventajas:
+**Ventajas**:
+- Eliminación de AWS Access Keys hardcodeadas en variables de entorno
+- Rotación automática de credenciales (tokens de corta duración)
+- Principio de menor privilegio (cada ServiceAccount tiene rol específico para S3, Secrets Manager, etc.)
 
-Eliminación de AWS Access Keys hardcodeadas en variables de entorno
+### External Secrets Operator
 
-Rotación automática de credenciales (tokens de corta duración)
-
-Principio de menor privilegio (cada ServiceAccount tiene rol específico para S3, Secrets Manager, etc.)
-
-External Secrets Operator
 Los secretos se almacenan en AWS Secrets Manager y se sincronizan automáticamente cada 1 hora al clúster como objetos Secret nativos de Kubernetes. El backend los consume como variables de entorno sin conocer su origen.
 
-Secretos gestionados:
+**Secretos gestionados**:
+- `gpuchile/dev/db`: Credenciales de PostgreSQL (username, password, host, port)
+- `gpuchile/dev/jwt`: Secret para firma de tokens de autenticación
+- `gpuchile/dev/redis`: URL de conexión a Redis
 
-gpuchile/dev/db: Credenciales de PostgreSQL (username, password, host, port)
+---
 
-gpuchile/dev/jwt: Secret para firma de tokens de autenticación
+## Observabilidad Production-Grade
 
-gpuchile/dev/redis: URL de conexión a Redis
+### Stack Prometheus + Grafana
 
-Observabilidad Production-Grade
-Stack Prometheus + Grafana
-El clúster despliega kube-prometheus-stack via Helm con almacenamiento persistente EBS gp3 (evitando pérdida de métricas históricas en reinicio de pods). Prometheus scraping targets incluyen:
+El clúster despliega `kube-prometheus-stack` via Helm con almacenamiento persistente EBS gp3 (evitando pérdida de métricas históricas en reinicio de pods). Prometheus scraping targets incluyen:
 
-Kubelet metrics (CPU, memoria, disco por nodo)
+- Kubelet metrics (CPU, memoria, disco por nodo)
+- Backend `/metrics` endpoint (request count, latency p95/p99, error rate)
+- Redis exporter (hit rate, evicted keys, conexiones activas)
 
-Backend /metrics endpoint (request count, latency p95/p99, error rate)
+![Monitoring Stack](./docs/images/Monitoring-Stack-for-2026-02-16-160409.jpg)
 
-Redis exporter (hit rate, evicted keys, conexiones activas)
+### Dashboard Node Exporter
 
-Monitoring Stack
-
-Dashboard Node Exporter
 El dashboard muestra consumo de recursos en tiempo real. La captura evidencia RAM estable (~43%) y baja latencia de red, indicando dimensionamiento correcto del clúster sin overprovisioning.
 
-Dashboard Grafana
+![Dashboard Grafana](./docs/images/grafana-dashboard-nodes.png)
 
-Nota técnica: Los volúmenes persistentes están en estado Bound exitosamente mediante AWS EBS CSI Driver, confirmando retención de datos históricos.
+**Nota técnica**: Los volúmenes persistentes están en estado `Bound` exitosamente mediante AWS EBS CSI Driver, confirmando retención de datos históricos.
 
-Health Checks Deep
-A diferencia de un simple ping, el endpoint /health valida conectividad con dependencias críticas antes de reportar estado al Load Balancer:
+### Health Checks Deep
 
-Health Checks
+A diferencia de un simple ping, el endpoint `/health` valida conectividad con dependencias críticas antes de reportar estado al Load Balancer:
 
-Componentes verificados:
+![Health Checks](./docs/images/health-checks-deep.png)
 
-PostgreSQL: Latencia de escritura y disponibilidad de conexiones del pool
-
-Redis: Comando PING para confirmar caché operativo
-
-Versioning: Expone versión del despliegue (v7.0.0) y timestamp para trazabilidad de releases
+**Componentes verificados**:
+1. **PostgreSQL**: Latencia de escritura y disponibilidad de conexiones del pool
+2. **Redis**: Comando PING para confirmar caché operativo
+3. **Versioning**: Expone versión del despliegue (v7.0.0) y timestamp para trazabilidad de releases
 
 El Load Balancer solo enruta tráfico a pods que responden HTTP 200, implementando health-based routing.
 
-CI/CD Pipeline Automatizado
-GitHub Actions con OIDC
+---
+
+## CI/CD Pipeline Automatizado
+
+### GitHub Actions con OIDC
+
 El pipeline elimina AWS Access Keys estáticas usando OIDC federation entre GitHub y AWS. El workflow obtiene credenciales temporales de STS y ejecuta:
 
-Build de imagen Docker
+1. Build de imagen Docker
+2. Push a Amazon ECR
+3. Rolling update en EKS via `kubectl set image`
+4. Health check post-deployment
 
-Push a Amazon ECR
+![CI/CD Pipeline](./docs/images/CICD-Pipeline.jpg)
 
-Rolling update en EKS via kubectl set image
+**Trigger**: Push a branch `main` en carpetas `apps/backend` o `apps/frontend`
 
-Health check post-deployment
+### Validación de Deployment
 
-CI/CD Pipeline
-
-Trigger: Push a branch main en carpetas apps/backend o apps/frontend
-
-Validación de Deployment
 El workflow incluye smoke tests que verifican disponibilidad de endpoints críticos post-deploy:
 
+```yaml
 - name: Verify deployment status
   run: kubectl rollout status deployment/gpuchile-backend -n default --timeout=180s
 
 - name: Health check
   run: curl --fail --retry 3 http://backend-loadbalancer/health
+```
 
-Infrastructure as Code
-Estructura Modular de Terraform
+---
+
+## Infrastructure as Code
+
+### Estructura Modular de Terraform
+
 El proyecto implementa separación de responsabilidades mediante módulos reutilizables:
+
+```
 terraform/
 ├── 1-infrastructure/       # Capa base (VPC, EKS, RDS, S3)
 │   └── modules/
@@ -234,190 +241,202 @@ terraform/
 └── environments/
     ├── dev/
     └── prod/
+```
 
-State Management
+### State Management
+
 Terraform gestiona 85+ recursos distribuidos entre servicios de AWS y configuraciones de Kubernetes:
 
-Terraform State
+![Terraform State](./docs/images/terraform-state-list.png)
 
-Validación de Infraestructura
-RDS PostgreSQL en estado disponible:
+### Validación de Infraestructura
 
-$ aws rds describe-db-instances --query "DBInstances.{DB:DBInstanceIdentifier,Endpoint:Endpoint.Address,Status:DBInstanceStatus}"
+**RDS PostgreSQL en estado disponible**:
+
+```bash
+$ aws rds describe-db-instances --query "DBInstances[0].{DB:DBInstanceIdentifier,Endpoint:Endpoint.Address,Status:DBInstanceStatus}"
 
 {
     "DB": "gpuchile-dev",
     "Endpoint": "gpuchile-dev.cifci8iac1cw.us-east-1.rds.amazonaws.com",
     "Status": "available"
 }
+```
 
-RDS Validation
+![RDS Validation](./docs/images/rds-validation.png)
 
-S3 Bucket para almacenamiento de imágenes:
+**S3 Bucket para almacenamiento de imágenes**:
+
+```bash
 $ aws s3 ls | Select-String "gpuchile-images"
 2026-02-12 19:58:09 gpuchile-images-dev-592451843842
+```
 
-S3 Bucket
+![S3 Bucket](./docs/images/s3-bucket.png)
 
-Network Load Balancer aprovisionado:
+**Network Load Balancer aprovisionado**:
 
-Load Balancer
+![Load Balancer](./docs/images/nlb-provisioned.png)
 
-Características de Producción
-Data Seeding Idempotente
+---
+
+## Características de Producción
+
+### Data Seeding Idempotente
+
 El sistema implementa un Job de Kubernetes que ejecuta un script Python/SQLAlchemy para inicialización de datos. El script verifica existencia de registros antes de insertar, evitando duplicados en re-despliegues.
 
-Data Seeding
+![Data Seeding](./docs/images/data-seeding.png)
 
-Implementaciones clave:
+**Implementaciones clave**:
+- **Sanitización de datos**: Patrón Whitelist para filtrar payloads JSON inconsistentes
+- **Logging estructurado**: Salida estandarizada `[INFO]`/`[SUCCESS]` para observabilidad en CloudWatch/FluentBit
+- **Conexión segura**: El Job obtiene credenciales de RDS desde Secrets Manager vía External Secrets
 
-Sanitización de datos: Patrón Whitelist para filtrar payloads JSON inconsistentes
+### API RESTful Completa
 
-Logging estructurado: Salida estandarizada [INFO]/[SUCCESS] para observabilidad en CloudWatch/FluentBit
-
-Conexión segura: El Job obtiene credenciales de RDS desde Secrets Manager vía External Secrets
-
-API RESTful Completa
 El backend expone endpoints estandarizados para gestión de inventario con validación estricta de esquemas mediante Pydantic:
 
-CRUD Endpoints
+![CRUD Endpoints](./docs/images/crud-endpoints.png)
 
-Operaciones implementadas:
+**Operaciones implementadas**:
+- `GET /api/gpus`: Listado con paginación y filtros por marca/precio/VRAM
+- `POST /api/gpus`: Creación con validación de campos obligatorios (price > 0, stock >= 0)
+- `PUT /api/gpus/{id}`: Actualización parcial (PATCH-like behavior)
+- `DELETE /api/gpus/{id}`: Soft delete (flag `is_active=false`)
 
-GET /api/gpus: Listado con paginación y filtros por marca/precio/VRAM
+### Servicios Auxiliares
 
-POST /api/gpus: Creación con validación de campos obligatorios (price > 0, stock >= 0)
+![AI Media Monitoring Services](./docs/images/ai-media-monitoring.png)
 
-PUT /api/gpus/{id}: Actualización parcial (PATCH-like behavior)
+**Endpoints adicionales**:
+- `/api/auth/register`, `/api/auth/login`: Autenticación JWT con bcrypt para passwords
+- `/api/cart`: Lógica de carrito persistente con validación de stock en tiempo real
+- `/api/images/upload`: Carga a S3 con presigned URLs (evitando proxy de archivos grandes por backend)
+- `/healthz`, `/readyz`: Probes de Kubernetes para liveness y readiness
+- `/metrics`: Exposición de métricas Prometheus (request count, latency histograms)
 
-DELETE /api/gpus/{id}: Soft delete (flag is_active=false)
+### Interfaz de Usuario Integrada
 
-Servicios Auxiliares
-AI Media Monitoring Services
-
-Endpoints adicionales:
-
-/api/auth/register, /api/auth/login: Autenticación JWT con bcrypt para passwords
-
-/api/cart: Lógica de carrito persistente con validación de stock en tiempo real
-
-/api/images/upload: Carga a S3 con presigned URLs (evitando proxy de archivos grandes por backend)
-
-/healthz, /readyz: Probes de Kubernetes para liveness y readiness
-
-/metrics: Exposición de métricas Prometheus (request count, latency histograms)
-
-Interfaz de Usuario Integrada
 La aplicación desplegada en EKS muestra integración completa del sistema:
 
-Frontend en EKS
+![Frontend en EKS](./docs/images/frontend-eks-deploy.png)
 
-Funcionalidades:
+**Funcionalidades**:
+- Catálogo dinámico con imágenes servidas desde S3 (CloudFront pendiente para CDN)
+- Chatbot impulsado por Llama-3 con entendimiento de lenguaje natural
+- Indicador de salud del sistema (RDS: CONNECTED)
 
-Catálogo dinámico con imágenes servidas desde S3 (CloudFront pendiente para CDN)
+---
 
-Chatbot impulsado por Llama-3 con entendimiento de lenguaje natural
+## Stack Tecnológico
 
-Indicador de salud del sistema (RDS: CONNECTED)
+### Compute & Orchestration
 
-Stack Tecnológico
-Compute & Orchestration
+| Componente | Tecnología | Versión |
+|------------|-----------|---------|
+| Orchestrator | Amazon EKS | 1.31 |
+| Container Runtime | containerd | 1.7 |
+| Node OS | Amazon Linux 2 | 5.10.245 |
+| Instance Type | EC2 Spot t3.medium | 2 vCPU, 4GB RAM |
+| Autoscaling | HPA + Cluster Autoscaler | Min: 1, Max: 3 pods / 1-2 nodes |
 
-| Componente        | Tecnología               | Versión                         |
-| ----------------- | ------------------------ | ------------------------------- |
-| Orchestrator      | Amazon EKS               | 1.31                            |
-| Container Runtime | containerd               | 1.7                             |
-| Node OS           | Amazon Linux 2           | 5.10.245                        |
-| Instance Type     | EC2 Spot t3.medium       | 2 vCPU, 4GB RAM                 |
-| Autoscaling       | HPA + Cluster Autoscaler | Min: 1, Max: 3 pods / 1-2 nodes |
+### Data & Storage
 
-Data & Storage
+| Componente | Tecnología | Versión |
+|------------|-----------|---------|
+| Database | RDS PostgreSQL | 15.4 |
+| Vector Extension | pgvector | 0.8.0 (HNSW indexing) |
+| Cache | Redis | 7-alpine |
+| Object Storage | Amazon S3 | Standard class |
+| Volumes | EBS gp3 | CSI Driver 1.25 |
 
-| Componente       | Tecnología     | Versión               |
-| ---------------- | -------------- | --------------------- |
-| Database         | RDS PostgreSQL | 15.4                  |
-| Vector Extension | pgvector       | 0.8.0 (HNSW indexing) |
-| Cache            | Redis          | 7-alpine              |
-| Object Storage   | Amazon S3      | Standard class        |
-| Volumes          | EBS gp3        | CSI Driver 1.25       |
+### Networking & Security
 
-Networking & Security
+| Componente | Tecnología | Configuración |
+|------------|-----------|---------------|
+| VPC | AWS VPC | 10.0.0.0/16 multi-AZ |
+| Load Balancer | Network LB | Layer 4 TCP routing |
+| Ingress | Nginx Ingress Controller | Kubernetes native |
+| Secrets | AWS Secrets Manager + ESO | Sync interval: 1h |
+| IAM | IRSA | OIDC federation |
 
-| Componente    | Tecnología                | Configuración        |
-| ------------- | ------------------------- | -------------------- |
-| VPC           | AWS VPC                   | 10.0.0.0/16 multi-AZ |
-| Load Balancer | Network LB                | Layer 4 TCP routing  |
-| Ingress       | Nginx Ingress Controller  | Kubernetes native    |
-| Secrets       | AWS Secrets Manager + ESO | Sync interval: 1h    |
-| IAM           | IRSA                      | OIDC federation      |
+### Observability & CI/CD
 
-Observability & CI/CD
+| Componente | Tecnología | Configuración |
+|------------|-----------|---------------|
+| Metrics | Prometheus Operator | Retention: 7d persistent |
+| Visualization | Grafana | Pre-configured dashboards |
+| Logs | Fluent Bit | CloudWatch sink |
+| CI/CD | GitHub Actions | OIDC authentication |
+| Registry | Amazon ECR | Private repositories |
 
-| Componente    | Tecnología          | Configuración             |
-| ------------- | ------------------- | ------------------------- |
-| Metrics       | Prometheus Operator | Retention: 7d persistent  |
-| Visualization | Grafana             | Pre-configured dashboards |
-| Logs          | Fluent Bit          | CloudWatch sink           |
-| CI/CD         | GitHub Actions      | OIDC authentication       |
-| Registry      | Amazon ECR          | Private repositories      |
+### Application Stack
 
-Application Stack
+| Componente | Tecnología | Versión |
+|------------|-----------|---------|
+| Backend Framework | FastAPI + Uvicorn | 0.109.0 |
+| Frontend Framework | React + Vite | 18.2 |
+| Web Server | Nginx | 1.25-alpine |
+| ORM | SQLAlchemy | 2.0.25 |
+| AI/ML | Llama-3 (70B) via Groq | Cloud inference |
+| Embeddings | SentenceTransformers | all-MiniLM-L6-v2 |
 
-| Componente         | Tecnología             | Versión          |
-| ------------------ | ---------------------- | ---------------- |
-| Backend Framework  | FastAPI + Uvicorn      | 0.109.0          |
-| Frontend Framework | React + Vite           | 18.2             |
-| Web Server         | Nginx                  | 1.25-alpine      |
-| ORM                | SQLAlchemy             | 2.0.25           |
-| AI/ML              | Llama-3 (70B) via Groq | Cloud inference  |
-| Embeddings         | SentenceTransformers   | all-MiniLM-L6-v2 |
+### Infrastructure as Code
 
-Infrastructure as Code
+| Componente | Tecnología | Versión |
+|------------|-----------|---------|
+| IaC | Terraform | 1.6.0+ |
+| Kubernetes Config | Helm Charts | 3.12+ |
+| State Backend | Terraform S3 Backend | Encrypted |
 
-| Componente        | Tecnología           | Versión   |
-| ----------------- | -------------------- | --------- |
-| IaC               | Terraform            | 1.6.0+    |
-| Kubernetes Config | Helm Charts          | 3.12+     |
-| State Backend     | Terraform S3 Backend | Encrypted |
+---
 
-Despliegue Rápido
-Prerequisitos
-AWS CLI configurado con credenciales (Access Key con permisos AdministratorAccess para provisioning inicial)
+## Despliegue Rápido
 
-Terraform >= 1.6.0
+### Prerequisitos
 
-kubectl >= 1.28
+- AWS CLI configurado con credenciales (Access Key con permisos AdministratorAccess para provisioning inicial)
+- Terraform >= 1.6.0
+- kubectl >= 1.28
+- Helm >= 3.12
+- Docker (opcional, para builds locales)
 
-Helm >= 3.12
+### Paso 1: Provisionar Infraestructura
 
-Docker (opcional, para builds locales)
-Paso 1: Provisionar Infraestructura
-
+```bash
 cd terraform/1-infrastructure
 terraform init
 terraform plan -out=plan.tfplan
 terraform apply plan.tfplan
+```
 
-Tiempo estimado: 15-20 minutos (creación de EKS Control Plane es el cuello de botella)
-Paso 2: Configurar kubectl
+**Tiempo estimado**: 15-20 minutos (creación de EKS Control Plane es el cuello de botella)
 
+### Paso 2: Configurar kubectl
+
+```bash
 aws eks update-kubeconfig --name gpuchile-cluster --region us-east-1
 kubectl get nodes  # Verificar conectividad
+```
 
-Paso 3: Instalar Controladores Helm
+### Paso 3: Instalar Controladores Helm
 
+```bash
 cd ../2-applications
 terraform init
 terraform apply
+```
 
 Esto despliega:
--AWS Load Balancer Controller
--External Secrets Operator
--Prometheus Operator
--Metrics Server
+- AWS Load Balancer Controller
+- External Secrets Operator
+- Prometheus Operator
+- Metrics Server
 
-Paso 4: Desplegar Aplicaciones
+### Paso 4: Desplegar Aplicaciones
 
+```bash
 # Instalar Redis
 kubectl apply -f ../../kubernetes/redis/
 
@@ -426,12 +445,19 @@ helm install gpuchile-backend ../../helm/backend --namespace default
 
 # Desplegar frontend
 helm install gpuchile-frontend ../../helm/frontend --namespace default
+```
 
-Paso 5: Obtener URL de Acceso
-kubectl get svc gpuchile-frontend -n default -o jsonpath='{.status.loadBalancer.ingress.hostname}'
-La aplicación estará disponible en el hostname del Load Balancer (ejemplo: a8f3d21...elb.amazonaws.com).
+### Paso 5: Obtener URL de Acceso
 
-Verificación
+```bash
+kubectl get svc gpuchile-frontend -n default -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+La aplicación estará disponible en el hostname del Load Balancer (ejemplo: `a8f3d21...elb.amazonaws.com`).
+
+### Verificación
+
+```bash
 # Health del backend
 curl http://<backend-lb-url>/health
 
@@ -443,55 +469,56 @@ kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-prometheus 909
 
 # Grafana (user: admin, pass: admin123)
 kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80
+```
 
-Arquitectura de Decisiones (ADRs)
-ADR-001: EC2 Spot en lugar de On-Demand
-Contexto: Necesidad de reducir costos sin comprometer disponibilidad.
+---
 
-Decisión: Usar instancias Spot con interruption handling automático via Cluster Autoscaler.
+## Arquitectura de Decisiones (ADRs)
 
-Consecuencias:
+### ADR-001: EC2 Spot en lugar de On-Demand
 
-Pros: 70% de ahorro, diversificación en múltiples tipos de instancia (t3.medium, t3a.medium)
+**Contexto**: Necesidad de reducir costos sin comprometer disponibilidad.
 
-Contras: Interrupción ocasional con 2 min notice (manejado por k8s graceful shutdown)
+**Decisión**: Usar instancias Spot con interruption handling automático via Cluster Autoscaler.
 
-ADR-002: Lambda sin VPC (Convention over Configuration)
-Contexto: Lambda necesita escribir URL de thumbnail en RDS requeriría NAT Gateway.
+**Consecuencias**:
+- Pros: 70% de ahorro, diversificación en múltiples tipos de instancia (t3.medium, t3a.medium)
+- Contras: Interrupción ocasional con 2 min notice (manejado por k8s graceful shutdown)
 
-Decisión: Lambda no escribe en DB. Backend construye URLs por convención (s3://.../original/image.jpg → s3://.../thumbnails/image.jpg).
+### ADR-002: Lambda sin VPC (Convention over Configuration)
 
-Consecuencias:
+**Contexto**: Lambda necesita escribir URL de thumbnail en RDS requeriría NAT Gateway.
 
-Pros: Costo reducido, Lambda stateless e idempotente, desacoplamiento
+**Decisión**: Lambda no escribe en DB. Backend construye URLs por convención (`s3://.../original/image.jpg` → `s3://.../thumbnails/image.jpg`).
 
-Contras: Requiere naming convention documentada, no soporta múltiples tamaños de thumbnail con nombres custom
+**Consecuencias**:
+- Pros: Costo reducido, Lambda stateless e idempotente, desacoplamiento
+- Contras: Requiere naming convention documentada, no soporta múltiples tamaños de thumbnail con nombres custom
 
-ADR-003: pgvector en RDS en lugar de Pinecone/Weaviate
-Contexto: Necesidad de búsqueda vectorial sin gestionar infraestructura adicional.
+### ADR-003: pgvector en RDS en lugar de Pinecone/Weaviate
 
-Decisión: Usar extensión pgvector en PostgreSQL existente.
+**Contexto**: Necesidad de búsqueda vectorial sin gestionar infraestructura adicional.
 
-Consecuencias:
+**Decisión**: Usar extensión pgvector en PostgreSQL existente.
 
-Pros: Datos relacionales y vectores en misma transacción (ACID), sin servicio adicional
+**Consecuencias**:
+- Pros: Datos relacionales y vectores en misma transacción (ACID), sin servicio adicional
+- Contras: Performance inferior a bases vectoriales especializadas a >1M vectores (suficiente para MVP)
 
-Contras: Performance inferior a bases vectoriales especializadas a >1M vectores (suficiente para MVP)
+---
 
-Contacto y Autor
-Nicolás Núñez Álvarez
-Ingeniero en Conectividad y Redes
+## Contacto y Autor
+
+**Nicolás Núñez Álvarez**  
+Ingeniero en Conectividad y Redes  
 Santiago, Chile
 
-GitHub: @NicolasNunez05
+- GitHub: [@NicolasNunez05](https://github.com/NicolasNunez05)
+- LinkedIn: [nicolas-nunez-alvarez](https://www.linkedin.com/in/nicolás-núñez-álvarez-35ba661ba/)
+- Email: nicolasnunezalvarez05@gmail.com
 
-LinkedIn: nicolas-nunez-alvarez
+---
 
-Email: nicolasnunezalvarez05@gmail.com
+## Licencia
 
-Licencia
-Este proyecto está bajo licencia MIT. Ver archivo LICENSE para detalles.
-
-
-
-
+Este proyecto está bajo licencia MIT. Ver archivo `LICENSE` para detalles.
