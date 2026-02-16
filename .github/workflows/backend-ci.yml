@@ -49,22 +49,22 @@ jobs:
 
     - name: 🚀 Deploy to EKS
       run: |
-        # Actualizar la imagen en el clúster
-        kubectl set image deployment/gpuchile-backend gpuchile-backend=${{ steps.build-image.outputs.image }}
+        # Usamos 'backend' que es el nombre real del contenedor según kubectl
+        kubectl set image deployment/gpuchile-backend backend=${{ steps.build-image.outputs.image }}
         
-        # Esperar a que el rollout de Kubernetes termine (los pods viejos mueren, los nuevos viven)
+        # Esperar actualización
         kubectl rollout status deployment/gpuchile-backend --timeout=90s
 
     - name: 🧪 Verify Deployment (Health Check)
       run: |
-        # 1. Obtener el nombre del nuevo Pod que acaba de nacer
+        # 1. Obtener nombre del Pod
         POD_NAME=$(kubectl get pods -l app=gpuchile-backend -o jsonpath="{.items[0].metadata.name}")
         
-        # 2. Port-forward en background (el '&' es clave)
+        # 2. Port-forward
         kubectl port-forward pod/$POD_NAME 8000:8000 &
         
-        # 3. ESPERA CRÍTICA: Darle 15 segundos a la app para que levante el servidor interno
+        # 3. Espera para que la app inicie
         sleep 15
         
-        # 4. Probar el endpoint. Si falla, el pipeline se pondrá rojo.
+        # 4. Test final
         curl -v --fail http://127.0.0.1:8000/health
