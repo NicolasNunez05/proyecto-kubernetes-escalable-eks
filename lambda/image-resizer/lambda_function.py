@@ -1,62 +1,83 @@
-"""
-🎯 QUÉ HACE: Redimensiona imágenes automáticamente
-📍 CUÁNDO SE USA: Trigger cuando se sube a S3 /original/
-🚫 NO TOCA LA BASE DE DATOS (Convention over Configuration)
-"""
+import json
 import boto3
-import io
+import os
+from io import BytesIO
 from PIL import Image
-from urllib.parse import unquote_plus # 👈 IMPORTANTE: Para leer nombres con espacios
 
-s3 = boto3.client('s3')
+s3_client = boto3.client('s3')
+
+THUMBNAIL_SIZE = (300, 300)
+MEDIUM_SIZE = (800, 800)
 
 def lambda_handler(event, context):
-    # Extraer info del evento S3 y decodificar el nombre (ej: "foto+1.jpg" -> "foto 1.jpg")
-    bucket = event['Records'][0]['s3']['bucket']['name']
-    key = unquote_plus(event['Records'][0]['s3']['object']['key'])
+    """
+    Trigger: S3 PUT en /original/
+    Output: Genera thumbnails en /thumbnails/ y /medium/
+    """
     
-    # Solo procesar /original/
+    # Obtener info del evento S3
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = event['Records'][0]['s3']['object']['key']
+    
+    # Solo procesar imágenes en /original/
     if not key.startswith('original/'):
-        print(f"Skipping: {key}")
-        return {'statusCode': 200, 'body': 'Skipped'}
+        return {'statusCode': 200, 'body': 'Ignored: not in original/'}
     
     try:
         # Descargar imagen original
-        print(f"Downloading: {key}")
-        obj = s3.get_object(Bucket=bucket, Key=key)
-        img = Image.open(io.BytesIO(obj['Body'].read()))
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        image_data = response['Body'].read()
         
-        # ✅ Manejar PNGs transparentes (Evita fondo negro)
-        if img.mode in ('RGBA', 'P', 'LA'):
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[3])
-            else:
-                background.paste(img)
-            img = background
+        # Abrir con Pillow
+        img = Image.open(BytesIO(image_data))
         
-        # Resize inteligente (Lanczos es el mejor filtro)
-        img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+        # Convertir a RGB si es PNG con transparencia
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
         
-        # Guardar en buffer (Memoria RAM)
-        buffer = io.BytesIO()
-        img.save(buffer, format='JPEG', quality=85, optimize=True)
-        buffer.seek(0)
+        # Obtener nombre del archivo
+        filename = os.path.basename(key)
         
-        # ✅ Guardar en /thumbnails/ con MISMO NOMBRE
-        thumb_key = key.replace('original/', 'thumbnails/')
+        # Generar thumbnail (300x300)
+        thumbnail = img.copy()
+        thumbnail.thumbnail(THUMBNAIL_SIZE, Image.LANCZOS)
+        thumbnail_buffer = BytesIO()
+        thumbnail.save(thumbnail_buffer, format='JPEG', quality=85, optimize=True)
+        thumbnail_buffer.seek(0)
         
-        print(f"Uploading to: {thumb_key}")
-        s3.put_object(
+        s3_client.put_object(
             Bucket=bucket,
-            Key=thumb_key,
-            Body=buffer.getvalue(),
-            ContentType='image/jpeg',
-            CacheControl='max-age=31536000'  # 1 año
+            Key=f'thumbnails/{filename}',
+            Body=thumbnail_buffer,
+            ContentType='image/jpeg'
         )
         
-        return {'statusCode': 200, 'body': f'Created {thumb_key}'}
+        # Generar imagen mediana (800x800)
+        medium = img.copy()
+        medium.thumbnail(MEDIUM_SIZE, Image.LANCZOS)
+        medium_buffer = BytesIO()
+        medium.save(medium_buffer, format='JPEG', quality=90, optimize=True)
+        medium_buffer.seek(0)
+        
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=f'medium/{filename}',
+            Body=medium_buffer,
+            ContentType='image/jpeg'
+        )
+        
+        print(f'✅ Processed: {key} → thumbnails/{filename} + medium/{filename}')
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'Image processed successfully',
+                'original': key,
+                'thumbnail': f'thumbnails/{filename}',
+                'medium': f'medium/{filename}'
+            })
+        }
         
     except Exception as e:
-        print(f"Error processing {key}: {str(e)}")
+        print(f'❌ Error processing {key}: {str(e)}')
         raise e

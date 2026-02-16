@@ -1,21 +1,23 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime
-from datetime import datetime
-from app.db.database import Base
-
+from sqlalchemy import Column, Integer, String, Float, Boolean, JSON, DateTime
+from sqlalchemy.sql import func
+from app.db.database import Base  # Asegúrate que este import sea correcto en tu proyecto
 
 class GPU(Base):
     __tablename__ = "gpus"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    brand = Column(String, index=True)
     model = Column(String, index=True)
-    price = Column(Float)
+    brand = Column(String, index=True)
+    series = Column(String, nullable=True)
     vram = Column(Integer)
-    cuda_cores = Column(Integer, nullable=True)
+    memory_type = Column(String, nullable=True)
+    price = Column(Float)
     stock = Column(Integer, default=0)
-    image_url = Column(String, nullable=True)
-    description = Column(Text, nullable=True)
+    
+    # Aquí se guardan los detalles técnicos extra
+    specs = Column(JSON, default={})
+    
     is_featured = Column(Boolean, default=False)
-    # ESTA ES LA LÍNEA QUE FALTABA Y CAUSABA EL ERROR SQL:
-    created_at = Column(DateTime, default=datetime.utcnow)
+    image_key = Column(String, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

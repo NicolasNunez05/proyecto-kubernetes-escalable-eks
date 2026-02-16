@@ -146,7 +146,7 @@ module "monitoring" {
   cluster_name      = var.cluster_name
   oidc_provider_arn = module.eks.oidc_provider_arn
   namespace         = "monitoring"
-  
+
   depends_on = [module.eks]
 }
 
@@ -173,7 +173,7 @@ module "autoscaling" {
   cluster_name      = var.cluster_name
   oidc_provider_arn = module.eks.oidc_provider_arn
   aws_region        = var.region
-  
+
   depends_on = [module.eks]
 }
 
@@ -183,6 +183,6 @@ module "logging" {
   cluster_name      = var.cluster_name
   oidc_provider_arn = module.eks.oidc_provider_arn
   aws_region        = var.region
-  
+
   depends_on = [module.eks]
 }

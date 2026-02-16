@@ -1,19 +1,30 @@
-output "db_instance_endpoint" {
-  description = "El endpoint de conexión de la base de datos"
+output "endpoint" {
+  description = "Endpoint de conexión de RDS"
   value       = aws_db_instance.postgres.endpoint
+  sensitive   = true
 }
 
-output "db_instance_name" {
-  description = "El nombre de la base de datos"
+output "address" {
+  description = "Address (hostname) de RDS"
+  value       = aws_db_instance.postgres.address
+}
+
+output "port" {
+  description = "Puerto de RDS"
+  value       = aws_db_instance.postgres.port
+}
+
+output "db_name" {
+  description = "Nombre de la base de datos"
   value       = aws_db_instance.postgres.db_name
 }
 
-output "db_secret_arn" {
+output "secret_arn" {
   description = "ARN del secreto en Secrets Manager"
   value       = aws_secretsmanager_secret.db_credentials.arn
 }
 
-output "db_security_group_id" {
-  description = "ID del security group de RDS"
+output "security_group_id" {
+  description = "Security group ID de RDS"
   value       = aws_security_group.rds.id
 }

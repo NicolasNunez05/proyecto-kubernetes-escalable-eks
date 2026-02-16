@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useCart, GPU } from '../context/CartContext'; // Importamos la interfaz GPU también
+import { useCart, GPU } from '../context/CartContext';
 
-// Iconos (Tipados como Functional Components)
+// Iconos
 const Icons = {
   Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>,
   Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
@@ -13,20 +13,38 @@ const Icons = {
 const HomePage = () => {
   const [gpus, setGpus] = useState<GPU[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+  
+  // CORRECCIÓN 1: Aseguramos que la URL no termine en doble slash
+  const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api').replace(/\/$/, '');
 
   useEffect(() => {
-    fetch(`${API_URL}/gpus/`)
-      .then(res => res.json())
-      .then((data: GPU[]) => {
-        setGpus(data);
+    // CORRECCIÓN 2: Quitamos el slash final en '/gpus' para evitar errores 404 en algunos backends
+    fetch(`${API_URL}/gpus`) 
+      .then(res => {
+        if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
+        return res.json();
+      })
+      .then((data: any) => {
+        // CORRECCIÓN 3: Validación defensiva. Si no es un array, ponemos array vacío.
+        if (Array.isArray(data)) {
+          setGpus(data);
+        } else {
+          console.error("Formato de datos incorrecto:", data);
+          setGpus([]); 
+        }
         setLoading(false);
       })
       .catch(err => {
-        console.error(err);
+        console.error("Error al cargar GPUs:", err);
+        setGpus([]); // Evita pantalla blanca en caso de error
         setLoading(false);
       });
   }, []);
+
+  // Helpers seguros para evitar crash si gpus está vacío
+  const safeGpus = Array.isArray(gpus) ? gpus : [];
+  const stockCount = safeGpus.filter(g => g.stock > 0).length;
+  const brandCount = new Set(safeGpus.map(g => g.brand)).size;
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center bg-gray-900">
@@ -57,9 +75,9 @@ const HomePage = () => {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { icon: Icons.Trending, val: gpus.length, label: "Modelos Disponibles", color: "text-blue-400", bg: "bg-blue-400/10" },
-          { icon: Icons.Zap, val: gpus.filter(g => g.stock > 0).length, label: "En Stock Inmediato", color: "text-green-400", bg: "bg-green-400/10" },
-          { icon: Icons.Cpu, val: new Set(gpus.map(g => g.brand)).size, label: "Marcas Premium", color: "text-pink-400", bg: "bg-pink-400/10" }
+          { icon: Icons.Trending, val: safeGpus.length, label: "Modelos Disponibles", color: "text-blue-400", bg: "bg-blue-400/10" },
+          { icon: Icons.Zap, val: stockCount, label: "En Stock Inmediato", color: "text-green-400", bg: "bg-green-400/10" },
+          { icon: Icons.Cpu, val: brandCount, label: "Marcas Premium", color: "text-pink-400", bg: "bg-pink-400/10" }
         ].map((stat, i) => (
           <div key={i} className="bg-gray-800/50 border border-gray-700 p-6 rounded-2xl flex items-center gap-4 hover:border-purple-500/30 transition-colors">
             <div className={`p-3 rounded-full ${stat.bg} ${stat.color}`}>
@@ -79,11 +97,18 @@ const HomePage = () => {
           Catálogo <span className="text-purple-400">Gamer</span>
         </h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {gpus.map((gpu) => (
-            <GPUCard key={gpu.id} gpu={gpu} />
-          ))}
-        </div>
+        {safeGpus.length === 0 ? (
+           <div className="text-center text-gray-400 py-10 bg-gray-800 rounded-xl">
+              <p>No se encontraron productos o error de conexión con AWS.</p>
+              <p className="text-xs mt-2 text-gray-600">URL API: {API_URL}</p>
+           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {safeGpus.map((gpu) => (
+              <GPUCard key={gpu.id} gpu={gpu} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

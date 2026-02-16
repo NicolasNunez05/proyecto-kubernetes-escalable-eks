@@ -1,334 +1,70 @@
-name: Backend CI/CD (Kind + LocalStack) 🐳
+name: 🚀 Deploy Backend to EKS
 
 on:
   push:
     branches: [ "main" ]
-  
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/backend-ci.yml'
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  KIND_VERSION: v0.20.0
-  KUBECTL_VERSION: v1.28.0
-  LOCALSTACK_VERSION: "3.0"
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: gpuchile-backend
+  EKS_CLUSTER_NAME: gpuchile-cluster
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  test-local:
-    name: Test con Kind + LocalStack
+  build-and-deploy:
+    name: 🏗️ Build, Push & Deploy
     runs-on: ubuntu-latest
     
-    services:
-      localstack:
-        image: localstack/localstack:3.0
-        env:
-          SERVICES: s3,secretsmanager
-          DEBUG: "1"
-          DATA_DIR: /tmp/localstack/data
-          DOCKER_HOST: unix:///var/run/docker.sock
-        ports:
-          - 4566:4566
-        options: >-
-          --health-cmd="curl -f http://localhost:4566/_localstack/health || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-    
     steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-      
-      - name: 🐳 Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: ☸️ Install Kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          kind version
-      
-      - name: 🔧 Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
-          kubectl version --client
-      
-      - name: 📦 Install AWS CLI Local
-        run: |
-          pip install awscli-local[ver1]
-          awslocal --version
-      
-      # ═══════════════════════════════════════════════════════════════════
-      # LOCALSTACK INIT
-      # ═══════════════════════════════════════════════════════════════════
-      
-      - name: 🔌 Wait for LocalStack
-        run: |
-          echo "⏳ Waiting for LocalStack to be ready..."
-          timeout 60 bash -c 'until curl -s http://localhost:4566/_localstack/health | grep "\"s3\": \"available\""; do sleep 2; done'
-          echo "✅ LocalStack is ready!"
-      
-      - name: 🪣 Create S3 Bucket in LocalStack
-        run: |
-          awslocal s3 mb s3://gpuchile-dev || echo "Bucket already exists"
-          awslocal s3 ls
-          echo "✅ S3 bucket 'gpuchile-dev' is ready"
-      
-      # ═══════════════════════════════════════════════════════════════════
-      # KIND CLUSTER SETUP (🔥 CORRECCIÓN APLICADA)
-      # ═══════════════════════════════════════════════════════════════════
-      
-      - name: ☸️ Create Kind Cluster
-        run: |
-          cat <<EOF | kind create cluster --name gpuchile-ci --config=-
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          nodes:
-          - role: control-plane
-            extraPortMappings:
-            - containerPort: 30000
-              hostPort: 8000
-              protocol: TCP
-          networking:
-            apiServerAddress: "0.0.0.0"
-            apiServerPort: 6443
-          EOF
-          
-          echo "✅ Kind cluster created"
-      
-      - name: 🔧 Configure kubectl for Kind
-        run: |
-          # Crear directorio .kube si no existe
-          mkdir -p $HOME/.kube
-          
-          # Exportar kubeconfig
-          kind export kubeconfig --name gpuchile-ci --kubeconfig $HOME/.kube/config
-          
-          # Set KUBECONFIG para pasos siguientes
-          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
-          
-          # Verificar conectividad
-          echo "===== Cluster Info ====="
-          kubectl cluster-info --context kind-gpuchile-ci
-          
-          echo "===== Nodes ====="
-          kubectl get nodes -o wide
-          
-          # Wait for control plane
-          echo "⏳ Waiting for nodes to be ready..."
-          kubectl wait --for=condition=Ready nodes --all --timeout=60s
-          
-          echo "✅ kubectl configured successfully!"
-      
-      - name: 🌐 Configure Docker Network
-        run: |
-          # Obtener contenedores
-          KIND_CONTAINER=$(docker ps -qf "name=gpuchile-ci-control-plane")
-          LOCALSTACK_CONTAINER=$(docker ps -qf "ancestor=localstack/localstack:3.0")
-          
-          echo "Kind Container: $KIND_CONTAINER"
-          echo "LocalStack Container: $LOCALSTACK_CONTAINER"
-          
-          # Obtener IP de LocalStack
-          LOCALSTACK_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $LOCALSTACK_CONTAINER | head -n1)
-          echo "LocalStack IP: $LOCALSTACK_IP"
-          echo "LOCALSTACK_IP=$LOCALSTACK_IP" >> $GITHUB_ENV
-          
-          # Obtener la red de Kind
-          KIND_NETWORK=$(docker inspect $KIND_CONTAINER -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{end}}' | head -n1)
-          echo "Kind Network: $KIND_NETWORK"
-          
-          # Conectar LocalStack a la red de Kind
-          docker network connect $KIND_NETWORK $LOCALSTACK_CONTAINER || echo "Already connected"
-          
-          # Verificar conectividad desde el nodo de Kind
-          echo "===== Testing connectivity from Kind node ====="
-          docker exec $KIND_CONTAINER curl -s http://$LOCALSTACK_IP:4566/_localstack/health || echo "Connection test failed"
-          
-          echo "✅ Network configured"
-      
-      # ═══════════════════════════════════════════════════════════════════
-      # BUILD & LOAD IMAGE
-      # ═══════════════════════════════════════════════════════════════════
-      
-      - name: 🏗️ Build Backend Image
-        run: |
-          cd apps/backend
-          docker build -t gpuchile-backend:test .
-          echo "✅ Image built successfully"
-      
-      - name: 📤 Load Image to Kind
-        run: |
-          kind load docker-image gpuchile-backend:test --name gpuchile-ci
-          echo "✅ Image loaded into Kind cluster"
-          
-          # Verificar que la imagen está en el nodo
-          docker exec gpuchile-ci-control-plane crictl images | grep gpuchile-backend || echo "Image not found in node"
-      
-      # ═══════════════════════════════════════════════════════════════════
-      # DEPLOY TO KIND
-      # ═══════════════════════════════════════════════════════════════════
-      
-      - name: 📋 Create ConfigMap for LocalStack
-        run: |
-          kubectl create configmap localstack-config \
-            --from-literal=LOCALSTACK_ENDPOINT=http://${{ env.LOCALSTACK_IP }}:4566 \
-            --from-literal=USE_LOCALSTACK=true \
-            --from-literal=AWS_REGION=us-east-1 \
-            --from-literal=S3_BUCKET_NAME=gpuchile-dev
-          
-          kubectl get configmap localstack-config -o yaml
-      
-      - name: 🔐 Create Secrets
-        run: |
-          kubectl create secret generic db-credentials \
-            --from-literal=DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/gpuchile \
-            --from-literal=SECRET_KEY=test-secret-key-for-ci
-      
-      - name: 🚀 Deploy Backend to Kind
-        run: |
-          cat <<EOF | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: gpuchile-backend
-            labels:
-              app: backend
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: backend
-            template:
-              metadata:
-                labels:
-                  app: backend
-              spec:
-                containers:
-                - name: backend
-                  image: gpuchile-backend:test
-                  imagePullPolicy: Never
-                  ports:
-                  - containerPort: 8000
-                  env:
-                  - name: USE_LOCALSTACK
-                    valueFrom:
-                      configMapKeyRef:
-                        name: localstack-config
-                        key: USE_LOCALSTACK
-                  - name: LOCALSTACK_ENDPOINT
-                    valueFrom:
-                      configMapKeyRef:
-                        name: localstack-config
-                        key: LOCALSTACK_ENDPOINT
-                  - name: AWS_REGION
-                    valueFrom:
-                      configMapKeyRef:
-                        name: localstack-config
-                        key: AWS_REGION
-                  - name: S3_BUCKET_NAME
-                    valueFrom:
-                      configMapKeyRef:
-                        name: localstack-config
-                        key: S3_BUCKET_NAME
-                  - name: DATABASE_URL
-                    valueFrom:
-                      secretKeyRef:
-                        name: db-credentials
-                        key: DATABASE_URL
-                  - name: SECRET_KEY
-                    valueFrom:
-                      secretKeyRef:
-                        name: db-credentials
-                        key: SECRET_KEY
-                  resources:
-                    limits:
-                      cpu: "500m"
-                      memory: "512Mi"
-                    requests:
-                      cpu: "250m"
-                      memory: "256Mi"
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: backend-service
-          spec:
-            type: NodePort
-            selector:
-              app: backend
-            ports:
-            - port: 8000
-              targetPort: 8000
-              nodePort: 30000
-          EOF
-          
-          echo "✅ Manifests applied"
-      
-      - name: ⏳ Wait for Deployment
-        run: |
-          echo "⏳ Waiting for deployment to be ready..."
-          kubectl wait --for=condition=available --timeout=180s deployment/gpuchile-backend
-          
-          echo "===== Pods Status ====="
-          kubectl get pods -o wide
-          
-          echo "===== Service Status ====="
-          kubectl get svc backend-service
-      
-      # ═══════════════════════════════════════════════════════════════════
-      # TESTS
-      # ═══════════════════════════════════════════════════════════════════
-      
-      - name: 🧪 Run Integration Tests
-        run: |
-          # Port forward en background
-          kubectl port-forward service/backend-service 8000:8000 &
-          PF_PID=$!
-          
-          # Esperar a que el port forward esté listo
-          sleep 10
-          
-          # Health check
-          echo "Testing /health endpoint..."
-          curl -f http://localhost:8000/health || exit 1
-          
-          echo "✅ Backend is healthy!"
-          
-          # Kill port forward
-          kill $PF_PID || true
-      
-      # ═══════════════════════════════════════════════════════════════════
-      # LOGS & CLEANUP
-      # ═══════════════════════════════════════════════════════════════════
-      
-      - name: 📊 Show Logs on Failure
-        if: failure()
-        run: |
-          echo "===== BACKEND PODS ====="
-          kubectl get pods
-          
-          echo "===== BACKEND LOGS ====="
-          kubectl logs -l app=backend --tail=100 || echo "No logs available"
-          
-          echo "===== BACKEND POD DESCRIBE ====="
-          kubectl describe pods -l app=backend || echo "No pods to describe"
-          
-          echo "===== LOCALSTACK LOGS ====="
-          docker logs $(docker ps -qf "ancestor=localstack/localstack:3.0") --tail=100 || echo "No LocalStack logs"
-          
-          echo "===== KIND CLUSTER INFO ====="
-          kubectl cluster-info dump || echo "Failed to dump cluster info"
-      
-      - name: 🧹 Cleanup
-        if: always()
-        run: |
-          echo "🧹 Cleaning up..."
-          kind delete cluster --name gpuchile-ci || true
-          echo "✅ Cleanup complete"
-#
-#
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v3
+
+    - name: 🔐 Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: 🚪 Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: 🐳 Build & Push Image
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        cd apps/backend
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: ☸️ Update Kubeconfig
+      run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+    - name: 🚀 Deploy to EKS
+      run: |
+        # Actualizar la imagen en el clúster
+        kubectl set image deployment/gpuchile-backend gpuchile-backend=${{ steps.build-image.outputs.image }}
+        
+        # Esperar a que el rollout de Kubernetes termine (los pods viejos mueren, los nuevos viven)
+        kubectl rollout status deployment/gpuchile-backend --timeout=90s
+
+    - name: 🧪 Verify Deployment (Health Check)
+      run: |
+        # 1. Obtener el nombre del nuevo Pod que acaba de nacer
+        POD_NAME=$(kubectl get pods -l app=gpuchile-backend -o jsonpath="{.items[0].metadata.name}")
+        
+        # 2. Port-forward en background (el '&' es clave)
+        kubectl port-forward pod/$POD_NAME 8000:8000 &
+        
+        # 3. ESPERA CRÍTICA: Darle 15 segundos a la app para que levante el servidor interno
+        sleep 15
+        
+        # 4. Probar el endpoint. Si falla, el pipeline se pondrá rojo.
+        curl -v --fail http://127.0.0.1:8000/health

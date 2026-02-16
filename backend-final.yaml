@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpuchile-backend
+  namespace: default
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: backend-service-account
+      containers:
+      - name: backend
+        image: 592451843842.dkr.ecr.us-east-1.amazonaws.com/gpuchile-backend:v1.0.4
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        env:
+        # --- SECRETOS (Base de Datos y APIs) ---
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: gpuchile-db-credentials
+              key: uri
+        - name: GROQ_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gpuchile-ai-secrets
+              key: GROQ_API_KEY
+        - name: AGENTOPS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gpuchile-ai-secrets
+              key: AGENTOPS_API_KEY
+        
+        # --- CORRECCIÓN 1: MODELO GROQ ACTUALIZADO ---
+        - name: GROQ_MODEL_NAME
+          value: "llama-3.3-70b-versatile"
+
+        # --- CORRECCIÓN 2: VARIABLES DE CONFIGURACIÓN FALTANTES ---
+        - name: SECRET_KEY
+          value: "clave_secreta_super_segura_demo_123"
+        - name: ACCESS_TOKEN_EXPIRE_MINUTES
+          value: "30"
+        - name: S3_BUCKET_NAME
+          value: "gpuchile-tfstate-592451843842-20260210" # Tu bucket real
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: ENVIRONMENT
+          value: "production"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpuchile-backend
+  namespace: default
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+spec:
+  type: LoadBalancer
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP

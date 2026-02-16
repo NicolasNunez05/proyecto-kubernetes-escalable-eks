@@ -1,11 +1,15 @@
+# ============================================
+# ECR REPOSITORIES
+# ============================================
+
 resource "aws_ecr_repository" "repos" {
   for_each = toset(var.repositories)
 
-  name                 = each.value
+  name                 = "${var.project_name}-${each.value}"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
-    scan_on_push = true # Escaneo de seguridad automático (Trivy)
+    scan_on_push = true  # Escaneo de seguridad automático (Trivy)
   }
 
   encryption_configuration {
@@ -13,14 +17,15 @@ resource "aws_ecr_repository" "repos" {
   }
 
   tags = {
-    Name        = each.value
+    Name        = "${var.project_name}-${each.value}"
     Environment = var.environment
   }
 }
 
-# Política de ciclo de vida (Retener solo últimas 10 imágenes)
+# Política de ciclo de vida: Retener solo últimas 10 imágenes
 resource "aws_ecr_lifecycle_policy" "cleanup" {
-  for_each   = aws_ecr_repository.repos
+  for_each = aws_ecr_repository.repos
+
   repository = each.value.name
 
   policy = jsonencode({

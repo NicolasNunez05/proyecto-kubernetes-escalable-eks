@@ -46,10 +46,11 @@ class AIService:
             try:
                 self.llm = ChatGroq(
                     groq_api_key=self.groq_api_key,
-                    model_name="llama3-8b-8192",
+                    # --- CAMBIO CRÍTICO: Modelo Actualizado ---
+                    model_name="llama-3.3-70b-versatile",
                     temperature=0
                 )
-                logger.info("✅ ChatGroq (Llama-3) initialized")
+                logger.info("✅ ChatGroq (Llama-3.3-70b) initialized")
             except Exception as e:
                 logger.error(f"❌ ChatGroq init failed: {e}")
         
@@ -122,7 +123,7 @@ class AIService:
             logger.error(f"❌ Retrieval error: {e}")
             return []
     
-    @agentops.record_action('generate_response') if AGENTOPS_AVAILABLE else lambda f: f
+    @agentops.record_function('generate_response') if AGENTOPS_AVAILABLE else lambda f: f
     def ask_agent(self, question: str) -> Dict:
         """
         RAG Step 2: Augmented Generation
@@ -179,7 +180,8 @@ Eres el Asistente Virtual Experto de 'GpuChile', la tienda líder en hardware ga
             
             return {
                 "answer": response.content,
-                "model": "llama3-8b-8192",
+                # --- CAMBIO: Reflejar el nombre correcto en la respuesta ---
+                "model": "llama-3.3-70b-versatile",
                 "rag_enabled": True,
                 "retrieved_products": similar_products,
                 "observability": "tracked_by_agentops" if self.agentops_initialized else "disabled"

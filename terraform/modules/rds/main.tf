@@ -1,12 +1,16 @@
-# Generar password aleatorio (se guarda en Terraform State)
+# ============================================
+# RDS POSTGRESQL
+# ============================================
+
+# Generar contraseña aleatoria
 resource "random_password" "db_password" {
-  length  = 24
+  length  = 32
   special = true
 }
 
 # Security Group para RDS
 resource "aws_security_group" "rds" {
-  name        = "gpuchile-rds-${var.environment}"
+  name_prefix = "${var.project_name}-rds-${var.environment}-"
   description = "Security group for RDS PostgreSQL"
   vpc_id      = var.vpc_id
 
@@ -19,6 +23,7 @@ resource "aws_security_group" "rds" {
   }
 
   egress {
+    description = "Allow all outbound"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -26,55 +31,70 @@ resource "aws_security_group" "rds" {
   }
 
   tags = {
-    Name        = "gpuchile-rds-sg"
+    Name        = "${var.project_name}-rds-${var.environment}"
+    Environment = var.environment
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Subnet Group para RDS
+resource "aws_db_subnet_group" "postgres" {
+  name       = "${var.project_name}-db-subnet-${var.environment}"
+  subnet_ids = var.subnet_ids
+
+  tags = {
+    Name        = "${var.project_name}-db-subnet-${var.environment}"
     Environment = var.environment
   }
 }
 
-# Subnet Group (RDS necesita al menos 2 AZs)
-resource "aws_db_subnet_group" "main" {
-  name       = "gpuchile-db-subnet-${var.environment}"
-  subnet_ids = var.subnet_ids
-
-  tags = {
-    Name = "GpuChile DB Subnet Group"
-  }
-}
-
-# RDS Instance
+# Instancia RDS
 resource "aws_db_instance" "postgres" {
-  identifier     = "gpuchile-db-${var.environment}"
+  identifier     = "${var.project_name}-${var.environment}"
   engine         = "postgres"
-  engine_version = "15.3"
+  engine_version = "15"
   instance_class = var.instance_class
 
   allocated_storage     = var.allocated_storage
-  max_allocated_storage = 50 # Autoscaling hasta 50GB
+  max_allocated_storage = 100
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   db_name  = var.db_name
   username = var.db_username
   password = random_password.db_password.result
 
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+  db_subnet_group_name   = aws_db_subnet_group.postgres.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
-  # ⚠️ COST SAVING: Single-AZ (Multi-AZ duplica el costo)
-  multi_az                = false
-  publicly_accessible     = false
-  skip_final_snapshot     = true # Para dev/portfolio (En prod: false)
+  # Configuración de backup
   backup_retention_period = 1
-  deletion_protection     = false
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "mon:04:00-mon:05:00"
+
+  # No crear snapshot final en destroy (para desarrollo)
+  skip_final_snapshot       = true
+  final_snapshot_identifier = null
+
+  # Public access deshabilitado
+  publicly_accessible = false
+
+  # Performance Insights (opcional, tiene costo)
+  enabled_cloudwatch_logs_exports = ["postgresql"]
 
   tags = {
-    Name        = "gpuchile-postgres"
+    Name        = "${var.project_name}-postgres-${var.environment}"
     Environment = var.environment
   }
 }
 
-
-# Guardar credenciales en AWS Secrets Manager (para External Secrets Operator)
+# Almacenar credenciales en Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name = "gpuchile/${var.environment}/db"
+  name        = "${var.project_name}/${var.environment}/db"
+  description = "PostgreSQL credentials for ${var.project_name}"
 
   tags = {
     Environment = var.environment

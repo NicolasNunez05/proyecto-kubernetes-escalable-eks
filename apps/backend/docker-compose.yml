@@ -9,18 +9,30 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - .env  # Carga TODAS las variables del .env
     environment:
-      # Override para que Docker vea a los otros servicios por nombre
+      # Override para que Docker vea servicios por nombre interno
       - DATABASE_URL=postgresql://gpuchile:password@db:5432/gpuchile_dev
       - REDIS_URL=redis://redis:6379/0
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} # Pasamos credenciales AWS locales
+      
+      # AWS Credentials (desde .env)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=us-east-1
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      
+      # AI (desde .env)
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      
+      # Security
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=development
     volumes:
-      - ./app:/app/app # Hot-reload: cambios en local se reflejan dentro
+      - ./app:/app/app  # Hot-reload
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
@@ -50,13 +62,20 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  # 🛠️ DB VIEWER (Opcional, para ver tus tablas fácil)
+  # 🛠️ DB VIEWER (Opcional)
   adminer:
     image: adminer
     restart: always
     ports:
       - "8080:8080"
+    depends_on:
+      - db
 
 volumes:
   postgres_data:

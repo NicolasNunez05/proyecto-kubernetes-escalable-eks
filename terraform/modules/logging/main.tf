@@ -52,7 +52,7 @@ resource "helm_release" "fluent_bit" {
   chart      = "fluent-bit"
   namespace  = "logging"
   version    = "0.43.0"
-  
+
   create_namespace = true
 
   values = [

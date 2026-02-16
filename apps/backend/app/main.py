@@ -8,15 +8,18 @@ from pydantic import BaseModel
 import time
 import logging
 
-from app.core.config import settings
+# Importaciones de rutas
+from app.api.routes import images, gpus, auth, cart
+from app.core.config import settings, validate_settings  
 from app.db.database import engine, Base, SessionLocal
-from app.api.routes import gpus, auth, cart
 from app.api.routes.cart import redis_client
-from app.services.ai_service import ai_service  # ⬅️ NUEVO
+from app.services.ai_service import ai_service
+
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 # Función para crear tablas con retry logic
 def create_tables_with_retry(max_retries=3, delay=2):
@@ -34,26 +37,48 @@ def create_tables_with_retry(max_retries=3, delay=2):
                 time.sleep(delay)
     return False
 
+
 # Inicializar FastAPI
 app = FastAPI(
     title="GpuChile API",
-    description="Production-grade GPU e-commerce API with EKS architecture + AI",
-    version="1.1.0",
+    description="Production-grade GPU e-commerce API with EKS architecture + AI + Image Processing",
+    version="1.2.0",  # Incrementada por nueva funcionalidad
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
 
 # Evento de inicio
 @app.on_event("startup")
 async def startup_event():
     """Inicializar recursos al arrancar"""
-    logger.info("🚀 Starting GpuChile API...")
-    success = create_tables_with_retry()
-    if not success:
-        logger.error("❌ Failed to create database tables after retries")
-    else:
+    try:
+        logger.info("🚀 Starting GpuChile API...")
+        
+        # Validar configuración PRIMERO
+        logger.info("📋 Validating configuration...")
+        validate_settings()
+        logger.info("✅ Configuration validated")
+        
+        # Crear tablas
+        logger.info("📦 Creating database tables...")
+        success = create_tables_with_retry()
+        
+        if not success:
+            logger.error("❌ Failed to create database tables after retries")
+            raise RuntimeError("Database initialization failed")
+        else:
+            logger.info("✅ Database tables created")
+            
         logger.info("✅ API ready to receive traffic")
+        
+    except Exception as e:
+        logger.error(f"❌ Startup failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
+    
 # Configuración CORS
 origins = [
     "http://localhost:5173",
@@ -70,6 +95,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Prometheus Metrics
 request_count = Counter(
     "http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]
@@ -78,12 +104,14 @@ request_duration = Histogram(
     "http_request_duration_seconds", "HTTP request duration", ["method", "endpoint"]
 )
 
+
 @app.middleware("http")
 async def track_metrics(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
 
+    # Excluir endpoints de sistema de métricas
     if request.url.path not in ["/health", "/metrics", "/healthz", "/readyz"]:
         request_count.labels(
             method=request.method,
@@ -97,14 +125,27 @@ async def track_metrics(request: Request, call_next):
 
     return response
 
-# Rutas existentes
+
+# ============================================
+# API ROUTES
+# ============================================
+
+# Core business logic
 app.include_router(gpus.router, prefix="/api/gpus", tags=["GPUs"])
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(cart.router, prefix="/api/cart", tags=["Cart"])
 
-# ===== NUEVO: AI ENDPOINT =====
+# Image management (NEW)
+app.include_router(images.router, prefix="/api/images", tags=["Images"])
+
+
+# ============================================
+# AI ENDPOINT
+# ============================================
+
 class QuestionRequest(BaseModel):
     query: str
+
 
 @app.post("/api/v1/ask-ai", tags=["AI"])
 async def ask_ai(request: QuestionRequest):
@@ -122,16 +163,25 @@ async def ask_ai(request: QuestionRequest):
     return response
 
 
-# System Endpoints
+# ============================================
+# SYSTEM ENDPOINTS
+# ============================================
+
 @app.get("/")
 def root():
     return {
         "message": "Welcome to GpuChile API 🚀",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "docs": "/docs",
         "environment": settings.ENVIRONMENT,
-        "ai_enabled": ai_service.is_available()
+        "features": {
+            "ai_enabled": ai_service.is_available(),
+            "image_processing": True,
+            "s3_storage": True,
+            "pre_signed_urls": True
+        }
     }
+
 
 @app.get("/health", tags=["System"])
 def health_check():
@@ -153,6 +203,15 @@ def health_check():
     except Exception as e:
         redis_status = f"unhealthy: {str(e)}"
 
+    # Verificar S3 (opcional, puede ser lento)
+    try:
+        import boto3
+        s3 = boto3.client('s3', region_name=settings.S3_REGION)
+        s3.head_bucket(Bucket=settings.S3_BUCKET)
+        s3_status = "healthy"
+    except Exception as e:
+        s3_status = f"unavailable: {str(e)}"
+
     status_code = 200 if db_status == "healthy" and redis_status == "healthy" else 503
 
     return {
@@ -160,22 +219,32 @@ def health_check():
         "services": {
             "database": db_status,
             "redis": redis_status,
+            "s3": s3_status,
             "ai": "enabled" if ai_service.is_available() else "disabled"
         },
         "timestamp": datetime.utcnow().isoformat(),
     }
+
 
 @app.get("/metrics", tags=["System"])
 def metrics():
     """Endpoint para que Prometheus haga scraping"""
     return Response(content=generate_latest(), media_type="text/plain")
 
+
 @app.get("/healthz", tags=["System"])
 def liveness():
     """K8s Liveness Probe"""
     return {"status": "alive"}
 
+
 @app.get("/readyz", tags=["System"])
 def readiness():
     """K8s Readiness Probe"""
-    return {"status": "ready"}
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        return {"status": "ready"}
+    except Exception:
+        return Response(content='{"status": "not ready"}', status_code=503)

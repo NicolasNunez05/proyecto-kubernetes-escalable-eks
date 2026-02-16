@@ -1,5 +1,10 @@
+variable "project_name" {
+  description = "Nombre del proyecto"
+  type        = string
+}
+
 variable "environment" {
-  description = "Entorno de despliegue"
+  description = "Entorno (dev, prod)"
   type        = string
 }
 
@@ -11,10 +16,4 @@ variable "s3_bucket_name" {
 variable "s3_bucket_arn" {
   description = "ARN del bucket S3"
   type        = string
-}
-
-variable "function_name" {
-  description = "Nombre de la función Lambda"
-  type        = string
-  default     = "gpuchile-image-resizer"
 }

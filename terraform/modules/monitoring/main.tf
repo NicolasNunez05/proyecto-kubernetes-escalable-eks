@@ -3,7 +3,7 @@ locals {
   oidc_provider_id = replace(var.oidc_provider_arn, "/^(.*provider/)/", "")
 }
 
-# 2. IAM Role para Prometheus
+# 2. IAM Role para Prometheus (Con nombre de SA corregido)
 resource "aws_iam_role" "prometheus" {
   name = "${var.cluster_name}-prometheus-role"
 
@@ -16,7 +16,8 @@ resource "aws_iam_role" "prometheus" {
         Action    = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "${local.oidc_provider_id}:sub" = "system:serviceaccount:${var.namespace}:prometheus-stack-kube-prom-prometheus"
+            # AQUÍ FORZAMOS EL NOMBRE EXACTO QUE USAREMOS EN HELM
+            "${local.oidc_provider_id}:sub" = "system:serviceaccount:${var.namespace}:prometheus-sa"
             "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
           }
         }
@@ -42,33 +43,52 @@ resource "aws_iam_role_policy" "prometheus_cloudwatch" {
   })
 }
 
-# 4. Instalación de Prometheus con Helm (ESTILO YAML)
+# 4. Instalación de Prometheus con Helm (ESTILO LIMPIO)
 resource "helm_release" "kube_prometheus_stack" {
-  name             = "prometheus-stack"
-  repository       = "https://prometheus-community.github.io/helm-charts"
-  chart            = "kube-prometheus-stack"
-  namespace        = var.namespace
+  name       = "prometheus-stack"
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "kube-prometheus-stack"
+  namespace  = var.namespace
   create_namespace = true
-  timeout          = 900 # 900 segundos = 15 minutos
-  wait             = true
+  timeout    = 900
+  wait       = true
+  # Usamos una versión estable para evitar sorpresas
+  version    = "56.0.0" 
 
-  # ⚠️ AQUÍ ESTÁ EL CAMBIO MÁGICO
-  # En lugar de usar 'set {}', usamos 'values' con YAML.
-  # Esto evita el error de "Unsupported block type".
   values = [
     yamlencode({
+      # Configuración de Grafana
       grafana = {
-        adminPassword = "admin123"
+        adminPassword = "admin" # Contraseña simple para demo
+        service = {
+          type = "ClusterIP"
+        }
       }
+      # Configuración de Prometheus
       prometheus = {
-        prometheusSpec = {
-          resources = {
-            requests = { memory = "256Mi" }
-            limits   = { memory = "512Mi" }
+        serviceAccount = {
+          create = true
+          # FORZAMOS EL NOMBRE AQUÍ PARA QUE COINCIDA CON EL IAM ROLE
+          name = "prometheus-sa"
+          annotations = {
+            "eks.amazonaws.com/role-arn" = aws_iam_role.prometheus.arn
           }
-          serviceAccount = {
-            annotations = {
-              "eks.amazonaws.com/role-arn" = aws_iam_role.prometheus.arn
+        }
+        prometheusSpec = {
+          # Recursos ajustados para capa gratuita/demo
+          resources = {
+            requests = { memory = "256Mi", cpu = "200m" }
+            limits   = { memory = "1024Mi", cpu = "500m" }
+          }
+          # IMPORTANTE: Esto habilita la persistencia básica
+          storageSpec = {
+            volumeClaimTemplate = {
+              spec = {
+                accessModes = ["ReadWriteOnce"]
+                resources = {
+                  requests = { storage = "5Gi" }
+                }
+              }
             }
           }
         }
