@@ -16,14 +16,19 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+# --- FIX 1: Instalar PyTorch CPU-Only PRIMERO ---
+# Esto evita descargar 3-4GB de drivers Nvidia (CUDA) innecesarios.
+# Lo hacemos antes de requirements.txt para aprovechar caché de Docker.
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
 # Copiar requirements
 COPY requirements.txt .
 
-# Instalar dependencias Python
+# Instalar resto de dependencias Python (sentence-transformers detectará torch ya instalado)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# --- FIX: Crear usuario no-root (ID 1000) ---
-# Creamos el usuario y su home para que torch pueda escribir caché
+# --- FIX 2: Crear usuario no-root (ID 1000) ---
+# Creamos usuario y grupo para evitar problemas de permisos y seguridad
 RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser \
     && mkdir -p /home/appuser/.cache \
     && chown -R appuser:appuser /home/appuser
@@ -40,7 +45,3 @@ EXPOSE 8000
 
 # Script de inicio
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-
-
-#######
