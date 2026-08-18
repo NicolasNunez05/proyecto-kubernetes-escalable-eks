@@ -4,6 +4,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.exe
 
 # --- PYTHON / BACKEND ---
 __pycache__/

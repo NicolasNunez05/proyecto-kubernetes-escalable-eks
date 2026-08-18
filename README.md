@@ -1,7 +1,7 @@
 # GpuChile - Arquitectura Cloud-Native en AWS EKS con IA Generativa
 
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform)](https://www.terraform.io/)
-[![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes%201.31-326CE5?logo=kubernetes)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes%201.29-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/Cloud-AWS-FF9900?logo=amazon-aws)](https://aws.amazon.com/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/Frontend-React-61DAFB?logo=react)](https://reactjs.org/)
@@ -18,7 +18,7 @@ Plataforma de e-commerce especializada en hardware GPU con capacidades de búsqu
 **Desafío Técnico**: Construir una arquitectura escalable de microservicios sobre Kubernetes que integre capacidades de IA generativa (LLM + RAG) con búsqueda vectorial, manteniendo costos controlados y cumpliendo estándares de producción (observabilidad, security-first, CI/CD automatizado).
 
 **Solución Implementada**:
-- Clúster EKS 1.31 con autoscaling horizontal (HPA) y vertical (Cluster Autoscaler) usando instancias Spot para reducir costos en 70%
+- Clúster EKS 1.29 con autoscaling horizontal (HPA) y vertical (Cluster Autoscaler) usando instancias Spot para reducir costos en 70%
 - Base de datos híbrida (PostgreSQL + pgvector) para persistencia relacional y búsqueda semántica con latencias sub-milisegundo
 - Gateway de IA con modelo Llama-3 (70B) orquestado mediante Groq Cloud para inferencia remota de baja latencia
 - Pipeline CI/CD completamente automatizado con GitHub Actions y OIDC (sin AWS keys estáticas)
@@ -37,7 +37,7 @@ Plataforma de e-commerce especializada en hardware GPU con capacidades de búsqu
 
 ### Capa de Networking
 
-El sistema despliega una VPC multi-AZ (10.0.0.0/16) con segregación de tráfico mediante subnets públicas y privadas. Los nodos worker de EKS residen en subnets privadas con acceso directo a internet mediante mapeo de IPs públicas (evitando NAT Gateway para reducir costos).
+El sistema despliega una VPC multi-AZ (10.0.0.0/16) con segregación de tráfico mediante subnets públicas y privadas. Los nodos worker de EKS residen deliberadamente en subnets públicas (con IP pública y ruta al Internet Gateway) para evitar el costo de un NAT Gateway en este entorno de demo. En un entorno de producción, estos nodos irían en subnets privadas con NAT Gateway o VPC Endpoints para no exponer los nodos directamente a internet.
 
 ![VPC Network Architecture](./docs/images/VPC-Network-Architecture-2026-02-16-155730.jpg)
 
@@ -88,7 +88,7 @@ El sistema implementa recuperación automática mediante el ciclo de reconciliac
 3. **Recuperación**: El ReplicaSet detecta discrepancia entre estado actual (1/2 pods) y deseado (2/2) y crea pod de reemplazo
 4. **Restauración**: El nuevo pod pasa health checks (`/health`, `/readyz`) y se reintegra al balanceo de carga
 
-**Resultado**: Zero downtime para usuarios finales con recuperación en milisegundos sin intervención manual.
+**Resultado**: recuperación automática sin intervención manual, en segundos. Con `HPA min:1` existe una ventana real de indisponibilidad si el único pod falla (no es zero-downtime); para eliminarla se requeriría `min:2` o más.
 
 ---
 
@@ -258,7 +258,7 @@ $ aws rds describe-db-instances --query "DBInstances[0].{DB:DBInstanceIdentifier
 
 {
     "DB": "gpuchile-dev",
-    "Endpoint": "gpuchile-dev.cifci8iac1cw.us-east-1.rds.amazonaws.com",
+    "Endpoint": "gpuchile-dev.xxxxxxxxxxxx.us-east-1.rds.amazonaws.com",
     "Status": "available"
 }
 ```
@@ -269,7 +269,7 @@ $ aws rds describe-db-instances --query "DBInstances[0].{DB:DBInstanceIdentifier
 
 ```bash
 $ aws s3 ls | Select-String "gpuchile-images"
-2026-02-12 19:58:09 gpuchile-images-dev-592451843842
+2026-02-12 19:58:09 gpuchile-images-dev-<account-id>
 ```
 
 ![S3 Bucket](./docs/images/s3-bucket.png)
@@ -335,7 +335,7 @@ La aplicación desplegada en EKS muestra integración completa del sistema:
 
 | Componente | Tecnología | Versión |
 |------------|-----------|---------|
-| Orchestrator | Amazon EKS | 1.31 |
+| Orchestrator | Amazon EKS | 1.29 |
 | Container Runtime | containerd | 1.7 |
 | Node OS | Amazon Linux 2 | 5.10.245 |
 | Instance Type | EC2 Spot t3.medium | 2 vCPU, 4GB RAM |
@@ -396,7 +396,7 @@ La aplicación desplegada en EKS muestra integración completa del sistema:
 
 ### Prerequisitos
 
-- AWS CLI configurado con credenciales (Access Key con permisos AdministratorAccess para provisioning inicial)
+- AWS CLI configurado con credenciales (para este demo se usó `AdministratorAccess`; en un entorno de producción se usaría un rol IAM acotado al mínimo privilegio necesario para Terraform)
 - Terraform >= 1.6.0
 - kubectl >= 1.28
 - Helm >= 3.12
@@ -467,7 +467,8 @@ curl http://<backend-lb-url>/docs
 # Métricas de Prometheus
 kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-prometheus 9090:9090
 
-# Grafana (user: admin, pass: admin123)
+# Grafana (user: admin, pass: <password> -- obtenida del Secret del cluster:
+# kubectl get secret prometheus-stack-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 -d)
 kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80
 ```
 
@@ -479,11 +480,11 @@ kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80
 
 **Contexto**: Necesidad de reducir costos sin comprometer disponibilidad.
 
-**Decisión**: Usar instancias Spot con interruption handling automático via Cluster Autoscaler.
+**Decisión**: Usar instancias Spot. El Node Termination Handler gestiona el aviso de interrupción (2 min) y hace drain del nodo; el Cluster Autoscaler solo reacciona provisionando nodos nuevos cuando detecta pods en estado Pending.
 
 **Consecuencias**:
 - Pros: 70% de ahorro, diversificación en múltiples tipos de instancia (t3.medium, t3a.medium)
-- Contras: Interrupción ocasional con 2 min notice (manejado por k8s graceful shutdown)
+- Contras: Interrupción ocasional con 2 min notice (manejado por Node Termination Handler)
 
 ### ADR-002: Lambda sin VPC (Convention over Configuration)
 
